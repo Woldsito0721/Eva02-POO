@@ -4,9 +4,6 @@ import os
 # Librerías
 from dotenv import load_dotenv
 
-# IA (Claude): estructura base sugerida. Se revisó que los errores nombren la
-# variable faltante pero nunca muestren su valor (RF15).
-
 load_dotenv()
 
 
@@ -67,3 +64,32 @@ class ConfiguracionApp():
 if __name__ == "__main__":
     configuracion = ConfiguracionApp()
     print(f"[INFO] Configuración cargada para el usuario {configuracion.usuario_bd}")
+
+
+"""
+Registro uso de IA (Claude):
+- ¿Qué generó la herramienta?: La clase ConfiguracionApp que lee el .env con
+  python-dotenv y expone cada valor con @property de solo lectura.
+- ¿Qué se adoptó?: Atributos privados (__) sin setters y validación de las variables
+  obligatorias de la BD al crear el objeto.
+- ¿Qué se modificó?: Los nombres se tradujeron al español (usuario_bd, clave_fernet...)
+  para no mezclar idiomas; el mensaje de error nombra la variable faltante pero nunca
+  muestra su valor (RF15).
+- ¿Qué se descartó?: Constantes sueltas a nivel de módulo, como en la actividad de
+  clases (ver abajo).
+- Justificación: El diagrama pide una clase; con @property nadie puede reemplazar las
+  credenciales desde otro archivo durante la ejecución.
+
+Código propuesto por la IA y DESCARTADO:
+
+    load_dotenv()
+    DB_USER = os.getenv('DB_USER')
+    DB_PASSWORD = os.getenv('DB_PASSWORD')
+    DB_DSN = os.getenv('DB_DSN')
+
+Por qué se descartó:
+  1. Cualquier módulo puede sobrescribirlas (configuracion_app.DB_PASSWORD = "x").
+  2. Si falta una variable queda en None sin aviso, y el error aparece recién al
+     conectar, lejos de la causa real.
+  3. No corresponde a la clase «utility» del diagrama.
+"""
