@@ -16,8 +16,6 @@ class ConfiguracionApp():
         self.__contrasena_bd = os.getenv('DB_PASSWORD')
         self.__dsn_bd = os.getenv('DB_DSN')
         self.__clave_fernet = os.getenv('FERNET_KEY')
-        self.__clave_api_clima = os.getenv('API_KEY_CLIMA')
-        self.__clave_api_indicadores = os.getenv('API_KEY_INDICADORES')
 
         self.__validar()
 
@@ -52,13 +50,6 @@ class ConfiguracionApp():
     def clave_fernet(self):
         return self.__clave_fernet
 
-    @property
-    def clave_api_clima(self):
-        return self.__clave_api_clima
-
-    @property
-    def clave_api_indicadores(self):
-        return self.__clave_api_indicadores
 
 
 if __name__ == "__main__":

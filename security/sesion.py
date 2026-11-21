@@ -40,7 +40,7 @@ class Sesion:
     def esta_activa(self) -> bool:
         return not self.__cerrada and datetime.now() < self.__expira
 
-    def get_usuario(self) -> Usuario:
+    def obtener_usuario(self) -> Usuario:
         return self.__usuario
 
     def exigir_permiso(self, p: Permiso) -> None:
@@ -53,3 +53,18 @@ class Sesion:
 
     def cerrar(self) -> None:
         self.__cerrada = True
+
+
+"""
+Código propuesto por la IA y DESCARTADO:
+
+    def exigir_permiso(self, p: Permiso) -> None:
+        if not self.__usuario.tiene_permiso(p):
+            raise AccesoDenegadoError(f"El rol {self.__usuario.rol} no tiene {p.name}")
+
+Por qué se descartó:
+  1. No revisaba si la sesión había expirado: un usuario podía seguir operando
+     indefinidamente después de dejar el equipo desatendido.
+  2. El mensaje revelaba el rol y el permiso exacto, información útil para un atacante.
+     Ahora el detalle queda interno y la consola solo muestra mensaje_seguro().
+"""

@@ -96,7 +96,7 @@ CREATE TABLE registro_tiempo (
     fecha            DATE          NOT NULL,
     horas_trabajadas NUMBER(4,2)   NOT NULL,
     descripcion      VARCHAR2(300),
-    CONSTRAINT ck_registro_horas CHECK (horas_trabajadas BETWEEN 0 AND 24),
+    CONSTRAINT ck_registro_horas CHECK (horas_trabajadas > 0 AND horas_trabajadas <= 24),
     CONSTRAINT fk_registro_empleado FOREIGN KEY (id_empleado) REFERENCES empleado (id_empleado),
     CONSTRAINT fk_registro_proyecto FOREIGN KEY (id_proyecto) REFERENCES proyecto (id_proyecto)
 );

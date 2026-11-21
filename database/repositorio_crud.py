@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 import oracledb
 
 # Proyecto
-from database.conexion_bd import ConexionBD
+from database.conexion_bd import ConexionBD, codigo_error
 
 # Mensajes para los errores de integridad más comunes
 MENSAJES_ORA = {
@@ -14,6 +14,16 @@ MENSAJES_ORA = {
     2291: "El registro relacionado no existe (clave foránea)",              # ORA-02291
     2292: "No se puede eliminar: tiene registros asociados",                # ORA-02292
 }
+
+
+def leer_campo(dato, campo: str):
+    """
+    Lee un campo tanto de un diccionario como de un objeto de model/.
+    Así los repositorios aceptan Proyecto, Empleado, DatoClima, etc., o un diccionario.
+    """
+    if isinstance(dato, dict):
+        return dato.get(campo)
+    return getattr(dato, campo, None)
 
 
 class RepositorioCRUD(ABC):
@@ -49,7 +59,7 @@ class RepositorioCRUD(ABC):
         """
         Ejecuta una sentencia parametrizada (:nombre).
         Retorna el cursor si funcionó, o None si hubo error (después de hacer rollback).
-        Quien recibe el cursor debe cerrarlo.
+        Quien recibe el cursor debe cerrarlo, y debe hacerlo dentro del candado.
         """
         cursor = None
         parametros = parametros if parametros is not None else {}
@@ -69,13 +79,12 @@ class RepositorioCRUD(ABC):
             return cursor
         except oracledb.IntegrityError as e:
             self._conexion.revertir()  # Si algo falla, nos aseguramos de que nada cambie en la bd
-            error = e.args[0]
-            mensaje = MENSAJES_ORA.get(error.code, "Error de integridad")
-            print(f"[WARNING] {self._tabla} | {mensaje} (ORA-{error.code:05d})")
-        except oracledb.DatabaseError as e:
+            numero = getattr(e.args[0], "code", 0) if e.args else 0
+            mensaje = MENSAJES_ORA.get(numero, "Error de integridad")
+            print(f"[WARNING] {self._tabla} | {mensaje} ({codigo_error(e)})")
+        except oracledb.Error as e:  # cualquier otro error de Oracle (ORA-*) o del driver (DPY-*)
             self._conexion.revertir()
-            error = e.args[0]
-            print(f"[ERROR] {self._tabla} | Error de base de datos (ORA-{error.code:05d})")
+            print(f"[ERROR] {self._tabla} | Error de base de datos ({codigo_error(e)})")
         except ConnectionError as e:
             print(e)
 
@@ -85,46 +94,48 @@ class RepositorioCRUD(ABC):
 
     def _insertar_con_id(self, sql: str, parametros: dict) -> int:
         """ INSERT que termina en 'returning id_x into :id_generado'. Retorna el id (0 si falló) """
-        cursor = self._ejecutar(sql, parametros, crear_id=True)
-        if not cursor:
-            return 0
+        with self._conexion.candado:
+            cursor = self._ejecutar(sql, parametros, crear_id=True)
+            if not cursor:
+                return 0
 
-        id_generado = int(parametros["id_generado"].getvalue()[0])
-        cursor.close()
+            id_generado = int(parametros["id_generado"].getvalue()[0])
+            cursor.close()
+
         print(f"[INFO] {self._tabla} | Registro {id_generado} insertado")
         return id_generado
 
     def _consultar_uno(self, sql: str, parametros=None):
         """ SELECT que retorna una sola fila (tupla) o None """
-        cursor = self._ejecutar(sql, parametros, confirmar=False)
-        if not cursor:
-            return None
+        with self._conexion.candado:
+            cursor = self._ejecutar(sql, parametros, confirmar=False)
+            if not cursor:
+                return None
 
-        fila = cursor.fetchone()
-        cursor.close()
+            fila = cursor.fetchone()
+            cursor.close()
         return fila
 
     def _consultar_varios(self, sql: str, parametros=None) -> list:
         """ SELECT que retorna una lista de filas (tuplas) """
-        cursor = self._ejecutar(sql, parametros, confirmar=False)
-        if not cursor:
-            return []
+        with self._conexion.candado:
+            cursor = self._ejecutar(sql, parametros, confirmar=False)
+            if not cursor:
+                return []
 
-        filas = cursor.fetchall()
-        cursor.close()
+            filas = cursor.fetchall()
+            cursor.close()
         return filas
 
     def _modificar(self, sql: str, parametros: dict) -> bool:
-        """ UPDATE o DELETE. Retorna True si afectó al menos una fila """
-        cursor = self._ejecutar(sql, parametros)
-        if not cursor:
-            return False
+        """ UPDATE, DELETE o MERGE. Retorna True si afectó al menos una fila """
+        with self._conexion.candado:
+            cursor = self._ejecutar(sql, parametros)
+            if not cursor:
+                return False
 
-        afectadas = cursor.rowcount  # rowcount = cantidad de filas afectadas
-        cursor.close()
-
-        if afectadas == 0:
-            print(f"[WARNING] {self._tabla} | Registro no encontrado")
+            afectadas = cursor.rowcount  # rowcount = cantidad de filas afectadas
+            cursor.close()
         return afectadas > 0
 
 
@@ -138,6 +149,9 @@ Registro uso de IA (Claude):
   distinguir los errores con error.code como enseñó el profesor.
 - ¿Qué se modificó?: Se reemplazó traceback.print_exc() por mensajes con el código ORA
   (no expone detalles internos) y se agregó un diccionario MENSAJES_ORA en español.
+  Tras la auditoría: cada operación se ejecuta dentro del candado de ConexionBD (la
+  rutina de las 08:00 corre en otro hilo), se captura oracledb.Error en vez de solo
+  DatabaseError, y leer_campo() permite recibir objetos de model/ o diccionarios.
 - ¿Qué se descartó?: Un eliminar() genérico en la clase padre (ver abajo).
 - Justificación: Cada hijo solo escribe su SQL; el manejo de errores se hereda, lo que
   evita duplicar código (criterio 2.1.2) y garantiza rollback ante cualquier fallo.

@@ -1,8 +1,17 @@
+# Python
+import threading
+
 # Librerías
 import oracledb
 
 # Proyecto
 from config.configuracion_app import ConfiguracionApp
+
+
+def codigo_error(excepcion) -> str:
+    """ Código seguro del error de oracledb: 'ORA-02292' o 'DPY-6005' (nunca el detalle completo) """
+    error = excepcion.args[0] if excepcion.args else None
+    return getattr(error, "full_code", None) or f"ORA-{getattr(error, 'code', 0):05d}"
 
 
 class ConexionBD():
@@ -16,6 +25,13 @@ class ConexionBD():
         self.__dsn = configuracion.dsn_bd
         self.__conexion = None
         self.__fallo_conexion = False
+        # El menú y la rutina de las 08:00 (otro hilo) comparten esta conexión:
+        # el candado evita que dos operaciones usen Oracle al mismo tiempo
+        self.__candado = threading.RLock()
+
+    @property
+    def candado(self):
+        return self.__candado
 
     def conectar(self):
         """ Abre la conexión si aún no existe. Retorna True si quedó conectada """
@@ -34,9 +50,8 @@ class ConexionBD():
                 dsn=self.__dsn
             )
             return True
-        except oracledb.DatabaseError as e:
-            error = e.args[0]
-            print(f"[ERROR] No se pudo conectar a la BD | ORA-{error.code:05d}")
+        except oracledb.Error as e:  # incluye errores ORA-* de Oracle y DPY-* del driver
+            print(f"[ERROR] No se pudo conectar a la BD | {codigo_error(e)}")
             self.__conexion = None
             self.__fallo_conexion = True
             return False
@@ -99,6 +114,9 @@ Registro uso de IA (Claude):
 - ¿Qué se modificó?: Se reemplazó traceback.print_exc() por un mensaje con solo el
   código ORA (no expone datos internos) y se agregó __fallo_conexion: durante las
   pruebas, los reintentos automáticos bloquearon la cuenta de FreeSQL (ORA-28000).
+  En la auditoría se agregó un candado (threading.RLock) porque la rutina de las 08:00
+  corre en otro hilo y comparte la conexión, y se captura oracledb.Error para cubrir
+  también los errores DPY-* del driver.
 - ¿Qué se descartó?: Un pool de conexiones (ver abajo).
 - Justificación: Es un programa de consola de un solo usuario; una conexión basta y
   es más simple de explicar y depurar.

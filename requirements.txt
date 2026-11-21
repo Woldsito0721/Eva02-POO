@@ -1,5 +1,4 @@
 oracledb
 python-dotenv
 requests
-bcrypt
 cryptography

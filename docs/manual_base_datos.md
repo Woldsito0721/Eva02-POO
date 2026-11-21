@@ -81,7 +81,7 @@ Tiempo estimado: 10 minutos.
    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
    ```
 
-4. Completar `API_KEY_CLIMA` y `API_KEY_INDICADORES` (ver sección de APIs en el manual técnico).
+Las APIs de clima (Open-Meteo) e indicadores (mindicador.cl) son públicas: no necesitan llave.
 
 > El archivo `.env` está en `.gitignore`: **nunca** se sube al repositorio.
 
@@ -93,10 +93,10 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-Prueba rápida de conexión, desde la raíz del proyecto (debe imprimir `[INFO] Conexión OK`):
+Prueba de conexión, desde la raíz del proyecto (debe terminar en `--- Todo correcto ---`):
 
 ```powershell
-python -m database.conexion_bd
+python -m test.prueba_conexion
 ```
 
 Si funciona, ejecutar el sistema:
@@ -108,9 +108,15 @@ python main.py
 ## Paso 5: usuario inicial
 
 El usuario administrador **no** se crea en el SQL: su empleado necesita el salario
-cifrado con la `FERNET_KEY` de cada instalación, y su contraseña un hash bcrypt.
-Lo crea `main.py` la primera vez que se ejecuta con las tablas vacías
-*(PENDIENTE: completar cuando esté implementado)*.
+cifrado con la `FERNET_KEY` de cada instalación, y su contraseña un hash SHA-512 (PBKDF2).
+Lo crea `main.py` la primera vez que se ejecuta con la tabla USUARIO vacía:
+
+1. Pide nombre, correo y salario del primer empleado (el salario se guarda cifrado).
+2. Pide nombre de usuario y contraseña (mínimo 8 caracteres, no se muestra en pantalla).
+3. Crea la cuenta con rol **ADMINISTRADOR** y luego muestra el inicio de sesión.
+
+Desde el menú **6. Usuarios**, el administrador puede crear cuentas GERENTE o EMPLEADO
+y desbloquear cuentas bloqueadas por 3 intentos fallidos.
 
 ---
 
