@@ -1,5 +1,0 @@
-oracledb
-requests
-cryptography
-bcrypt
-python-dotenv
