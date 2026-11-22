@@ -110,7 +110,7 @@ Registro uso de IA (Claude):
 - ¿Qué se adoptó?: Asociación con Empleado mediante id_empleado (un usuario ES una
   cuenta de acceso, no un tipo de empleado) y el hash SHA-512 (PBKDF2) de ServicioCifrado.
 - ¿Qué se modificó?: Se agregaron crear() para no recibir nunca la contraseña en texto
-  en el constructor, desbloquear() y el límite de 3 intentos (manual 6.1).
+  en el constructor, desbloquear() y el límite de 3 intentos fallidos.
 - ¿Qué se descartó?: Comparar contraseñas en texto plano (ver abajo).
 - Justificación: Si la BD se filtra, los hashes SHA-512 con sal no se pueden revertir.
 

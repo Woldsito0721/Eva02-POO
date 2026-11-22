@@ -33,7 +33,7 @@ class ServicioCifrado:
         if clave is None:
             clave_texto = ConfiguracionApp().clave_fernet
             if not clave_texto:
-                raise ValueError("[ERROR] Falta FERNET_KEY en el archivo .env (ver docs/manual_base_datos.md)")
+                raise ValueError("[ERROR] Falta FERNET_KEY en el archivo .env (ver README.md)")
             clave = clave_texto.encode()
         try:
             self.__fernet: Fernet = Fernet(clave)

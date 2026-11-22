@@ -16,6 +16,7 @@ from model.departamento import Departamento
 from model.empleado import Empleado
 from model.indicador_economico import IndicadorEconomico
 from model.proyecto import Proyecto
+from model.registro_tiempo import RegistroTiempo
 from model.rol import Permiso, Rol
 from model.usuario import Usuario
 from security.servicio_cifrado import ServicioCifrado
@@ -112,6 +113,16 @@ def ejecutar_pruebas():
               not solar.tiene_asignado(ana) and len(solar.asignaciones) == 1)
     verificar("fecha_fin anterior rechazada", lanza_error(lambda: Asignacion(
         ana, solar, None, date(2026, 5, 1), date(2026, 1, 1))))
+    verificar("asignación sin empleado ni proyecto rechazada", lanza_error(lambda: Asignacion(None, None, "Técnica")))
+    # Objetos con id (como vienen de Oracle): los repositorios leen id_empleado / id_proyecto
+    eva = Empleado("Eva Paz", None, None, "eva@ecotech.cl", date(2025, 1, 1), cifrado.cifrar("800000"), id_empleado=5)
+    eolico = Proyecto("Parque Eólico", None, date(2026, 2, 1), "Chile", "Osorno", "CLP", id_proyecto=7)
+    asignacion = Asignacion(eva, eolico, "Supervisora")
+    verificar("Asignacion entrega las FK id_empleado e id_proyecto",
+              asignacion.id_empleado == 5 and asignacion.id_proyecto == 7)
+    registro = RegistroTiempo(eva, eolico, date.today(), 4, "Montaje")
+    verificar("RegistroTiempo entrega las FK id_empleado e id_proyecto",
+              registro.id_empleado == 5 and registro.id_proyecto == 7)
 
     print("\n6. DATO_CLIMA E INDICADOR")
     verificar("clima templado es apto", DatoClima("Osorno", 14, 80, "Nublado").es_apto_para_trabajo())

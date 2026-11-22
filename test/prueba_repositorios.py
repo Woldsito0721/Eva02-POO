@@ -15,6 +15,11 @@ from database.repositorios import (
     RepositorioAsignacion, RepositorioDatoExterno, RepositorioDepartamento,
     RepositorioEmpleado, RepositorioProyecto, RepositorioRegistroTiempo, RepositorioUsuario,
 )
+from model.asignacion import Asignacion
+from model.departamento import Departamento
+from model.empleado import Empleado
+from model.proyecto import Proyecto
+from model.registro_tiempo import RegistroTiempo
 
 resultados = {"ok": 0, "fallo": 0}
 
@@ -127,9 +132,33 @@ def ejecutar_pruebas(bd: ConexionBD):
               not externos.guardar_indicador({"codigo": "ZZZ", "valor": 951.00, "fecha": hoy}))
     verificar("buscar_indicador", float(externos.buscar_indicador("ZZZ", hoy)["valor"]) == 950.25)
 
-    print("\n8. LIMPIEZA")
-    verificar("eliminar registro de tiempo", registros.eliminar(id_registro))
-    verificar("eliminar asignación", asignaciones.eliminar(id_asignacion))
+    print("\n8. OBJETOS DEL MODELO (como los guarda main.py)")
+    fila_empleado = empleados.buscar_por_id(id_empleado)
+    fila_proyecto = proyectos.buscar_por_id(id_proyecto)
+    empleado_obj = Empleado(fila_empleado["nombre"], None, None, fila_empleado["correo"],
+                            fila_empleado["fecha_inicio_contrato"], bytes(fila_empleado["salario_cifrado"]),
+                            id_empleado=id_empleado)  # se arma sin departamento
+    proyecto_obj = Proyecto(fila_proyecto["nombre"], fila_proyecto["descripcion"], fila_proyecto["fecha_inicio"],
+                            fila_proyecto["pais"], fila_proyecto["ciudad"], fila_proyecto["moneda"],
+                            id_proyecto=id_proyecto)
+    asignacion_obj = Asignacion(empleado_obj, proyecto_obj, "Supervisor")
+    id_asignacion_obj = asignaciones.insertar(asignacion_obj)
+    verificar("insertar objeto Asignacion", id_asignacion_obj > 0)
+    asignacion_obj = Asignacion(empleado_obj, proyecto_obj, "Supervisor", date.today(), None, id_asignacion_obj)
+    asignacion_obj.finalizar()
+    verificar("actualizar objeto Asignacion (finalizar)", asignaciones.actualizar(asignacion_obj)
+              and asignaciones.buscar_por_id(id_asignacion_obj)["fecha_fin"] is not None)
+    id_registro_obj = registros.insertar(RegistroTiempo(empleado_obj, proyecto_obj, date.today(), 3, "Montaje"))
+    verificar("insertar objeto RegistroTiempo", id_registro_obj > 0)
+    verificar("actualizar objeto Empleado sin departamento → NULL", empleados.actualizar(empleado_obj)
+              and empleados.buscar_por_id(id_empleado)["id_departamento"] is None)
+    Departamento("PRUEBA Energía", empleado_obj, id_departamento=id_departamento).agregar_empleado(empleado_obj)
+    verificar("Departamento.agregar_empleado + actualizar", empleados.actualizar(empleado_obj)
+              and empleados.buscar_por_id(id_empleado)["id_departamento"] == id_departamento)
+
+    print("\n9. LIMPIEZA")
+    verificar("eliminar registro de tiempo", registros.eliminar(id_registro) and registros.eliminar(id_registro_obj))
+    verificar("eliminar asignación", asignaciones.eliminar(id_asignacion) and asignaciones.eliminar(id_asignacion_obj))
     verificar("eliminar departamento (empleado queda sin depto)", departamentos.eliminar(id_departamento))
     verificar("ON DELETE SET NULL", empleados.buscar_por_id(id_empleado)["id_departamento"] is None)
     verificar("eliminar empleado (borra su usuario en cascada)", empleados.eliminar(id_empleado))
@@ -165,6 +194,10 @@ Registro uso de IA (Claude):
 - ¿Qué se modificó?: La limpieza se hace en orden inverso a las claves foráneas para
   no dejar datos de prueba en la BD del evaluador.
 - ¿Qué se descartó?: Borrar todo con TRUNCATE al final (ver abajo).
+- Revisión final (22-11): se agregó la sección 8, que guarda OBJETOS del modelo
+  (Asignacion, RegistroTiempo, Empleado con Departamento.agregar_empleado) tal como
+  lo hace ahora main.py, para comprobar que los repositorios aceptan objetos y no
+  solo diccionarios.
 
 Código propuesto por la IA y DESCARTADO:
 

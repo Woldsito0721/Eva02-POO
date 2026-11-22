@@ -19,6 +19,8 @@ REGISTRO DE USO DE IA:
 - ¿Qué se adoptó?: La composición con ServicioClima, ServicioIndicadores y RepositorioDatoExterno definida en el diagrama UML.
 - ¿Qué se modificó?: Se ejecutó la espera horaria (08:00) en un hilo daemon (threading.Thread) para no bloquear el menú de consola, se cargaron ciudades/monedas dinámicamente desde los proyectos activos y se aislaron los errores por ítem.
   Tras la auditoría: se lee ciudad/moneda/id_proyecto tanto de objetos Proyecto como de diccionarios (se quitó el truco "_Proyecto__ciudad"), los errores se informan con mensaje_seguro() en vez de "pass", el hilo captura cualquier excepción para no morir en silencio, y el parámetro "repo" pasó a llamarse "repositorio".
+  Revisión final (22-11): la rutina llama a consultar() (método abstracto de ServicioAPI) en vez de
+  obtener_clima()/obtener_indicador(), para que el polimorfismo del diagrama se use en el flujo real.
 - ¿Qué se descartó?: El bloqueo del hilo principal y el uso de ciudades o monedas estáticas.
 - Justificación: Garantiza la continuidad operativa del menú interactivo y permite escalar automáticamente al registrar nuevos proyectos internacionales.
 """
@@ -88,7 +90,9 @@ class TareaProgramada:
 
             if ciudad and id_proyecto:
                 try:
-                    dato_clima = self.__servicio_clima.obtener_clima(ciudad)
+                    # consultar() es el método abstracto de ServicioAPI (polimorfismo):
+                    # cada servicio lo implementa a su manera y devuelve su propio objeto
+                    dato_clima = self.__servicio_clima.consultar(ciudad)
                     if self.__repositorio.guardar_clima(dato_clima, id_proyecto):
                         resumen["clima"] += 1
                 except ErrorServicioExterno as e:
@@ -102,7 +106,7 @@ class TareaProgramada:
             if codigo and codigo not in monedas_consultadas:
                 monedas_consultadas.add(codigo)
                 try:
-                    indicador = self.__servicio_indicadores.obtener_indicador(codigo)
+                    indicador = self.__servicio_indicadores.consultar(codigo)
                     if self.__repositorio.guardar_indicador(indicador):
                         resumen["indicadores"] += 1
                 except ErrorServicioExterno as e:

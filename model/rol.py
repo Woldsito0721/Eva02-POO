@@ -12,7 +12,7 @@ class Permiso(Enum):
     CONSULTAR_APIS = "CONSULTAR_APIS"
 
 
-# Permisos de cada rol según el manual (sección 6.2). El nombre del rol es lo
+# Permisos de cada rol. El nombre del rol es lo
 # único que se guarda en Oracle (USUARIO.rol); los permisos se arman aquí.
 PERMISOS_POR_ROL = {
     "ADMINISTRADOR": set(Permiso),  # todos los permisos
@@ -68,7 +68,7 @@ Registro uso de IA (Claude):
 - ¿Qué se descartó?: Guardar los permisos como lista de textos (ver abajo) y el permiso
   GENERAR_INFORMES, porque los informes PDF/Excel quedaron fuera de alcance.
 - Justificación: El rol vive en USUARIO.rol (texto con CHECK) y sus permisos en
-  Python, como dice la decisión técnica 2 del manual.
+  Python: si cambian los permisos de un rol no hay que modificar la base de datos.
 
 Código propuesto por la IA y DESCARTADO:
 

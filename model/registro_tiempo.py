@@ -56,6 +56,15 @@ class RegistroTiempo():
     def proyecto(self):
         return self.__proyecto
 
+    # FK de la tabla REGISTRO_TIEMPO: RepositorioRegistroTiempo las lee del objeto
+    @property
+    def id_empleado(self):
+        return self.__empleado.id_empleado
+
+    @property
+    def id_proyecto(self):
+        return self.__proyecto.id_proyecto
+
     @property
     def fecha(self):
         return self.__fecha
@@ -80,6 +89,9 @@ Registro uso de IA (Claude):
   antes de llegar al CHECK de Oracle.
 - ¿Qué se modificó?: Se agregó la regla de no registrar horas en fechas futuras.
 - ¿Qué se descartó?: Validar con assert (ver abajo).
+- Revisión final (22-11): se agregaron las properties id_empleado / id_proyecto para
+  que main.py guarde el objeto RegistroTiempo (pasando por __validar()) en vez de un
+  diccionario que repetía las validaciones a mano.
 
 Código propuesto por la IA y DESCARTADO:
 

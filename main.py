@@ -24,6 +24,7 @@ from model.asignacion import Asignacion
 from model.departamento import Departamento
 from model.empleado import Empleado
 from model.proyecto import Proyecto
+from model.registro_tiempo import RegistroTiempo
 from model.rol import PERMISOS_POR_ROL, Permiso, Rol
 from model.usuario import Usuario
 from security.servicio_cifrado import ServicioCifrado
@@ -115,6 +116,15 @@ class SistemaEcoTech():
         return Empleado(fila["nombre"], fila["direccion"], fila["telefono"], fila["correo"],
                         fila["fecha_inicio_contrato"], bytes(fila["salario_cifrado"]),
                         id_empleado=fila["id_empleado"])
+
+    def __proyecto_desde_fila(self, fila: dict) -> Proyecto:
+        return Proyecto(fila["nombre"], fila["descripcion"], fila["fecha_inicio"], fila["pais"],
+                        fila["ciudad"], fila["moneda"], id_proyecto=fila["id_proyecto"])
+
+    def __departamento_desde_fila(self, fila: dict) -> Departamento:
+        """ El gerente es un Empleado (asociación «gerente»): se carga desde su fila """
+        gerente = self.__empleado_desde_fila(self.__repositorios["empleados"].buscar_por_id(fila["id_gerente"]))
+        return Departamento(fila["nombre"], gerente, id_departamento=fila["id_departamento"])
 
     def __usuario_desde_fila(self, fila: dict) -> Usuario:
         return Usuario(fila["nombre_usuario"], fila["hash_contrasena"], Rol.desde_nombre(fila["rol"]),
@@ -225,6 +235,13 @@ class SistemaEcoTech():
         """ Lanza AccesoDenegadoError si la sesión expiró o el rol no tiene el permiso """
         self.__sesion.exigir_permiso(permiso)
 
+    def __exigir_administrador(self) -> None:
+        """ Gestión de usuarios: sesión vigente y rol ADMINISTRADOR """
+        if not self.__sesion.esta_activa():
+            raise AccesoDenegadoError("La sesión ha expirado o fue cerrada.")
+        if not self.__es_administrador():
+            raise AccesoDenegadoError("Gestión de usuarios reservada al ADMINISTRADOR")
+
     def __es_administrador(self) -> bool:
         return self.__usuario_actual().rol.nombre == "ADMINISTRADOR"
 
@@ -264,6 +281,7 @@ class SistemaEcoTech():
         self.__exigir(Permiso.GESTIONAR_PROYECTOS)
         repositorio = self.__repositorios["proyectos"]
         while True:
+            self.__exigir(Permiso.GESTIONAR_PROYECTOS)  # en cada vuelta: la sesión pudo expirar dentro del submenú
             print("\n--- Proyectos ---\n1. Listar\n2. Crear\n3. Editar\n4. Eliminar\n0. Volver")
             opcion = input("Opción: ").strip()
             try:
@@ -300,6 +318,7 @@ class SistemaEcoTech():
         repositorio = self.__repositorios["departamentos"]
         empleados = self.__repositorios["empleados"]
         while True:
+            self.__exigir(Permiso.GESTIONAR_DEPARTAMENTOS)  # en cada vuelta: la sesión pudo expirar dentro del submenú
             print("\n--- Departamentos ---\n1. Listar\n2. Crear\n3. Editar\n4. Eliminar\n5. Asignar empleado\n0. Volver")
             opcion = input("Opción: ").strip()
             try:
@@ -335,14 +354,21 @@ class SistemaEcoTech():
                         print("[INFO] Departamento eliminado")
                 elif opcion == "5":
                     fila = empleados.buscar_por_id(self.__pedir_entero(" - Id del empleado: "))
-                    id_departamento = self.__pedir_entero(" - Id del departamento (0 = quitar): ")
                     if not fila:
                         print("[WARNING] Empleado no encontrado")
-                    else:
-                        # Un empleado está en un solo departamento (0..1): se reemplaza el anterior
-                        fila["id_departamento"] = id_departamento or None
-                        if empleados.actualizar(fila):
-                            print("[INFO] Departamento del empleado actualizado")
+                        continue
+                    id_departamento = self.__pedir_entero(" - Id del departamento (0 = quitar): ")
+                    # El empleado se arma sin departamento: con 0 queda así (NULL en Oracle)
+                    empleado = self.__empleado_desde_fila(fila)
+                    if id_departamento:
+                        fila_departamento = repositorio.buscar_por_id(id_departamento)
+                        if not fila_departamento:
+                            print("[WARNING] Departamento no encontrado")
+                            continue
+                        # Agregación 0..1: agregar_empleado() deja al empleado en UN solo departamento
+                        self.__departamento_desde_fila(fila_departamento).agregar_empleado(empleado)
+                    if empleados.actualizar(empleado):
+                        print("[INFO] Departamento del empleado actualizado")
                 elif opcion == "0":
                     return
                 else:
@@ -357,6 +383,7 @@ class SistemaEcoTech():
         self.__exigir(Permiso.GESTIONAR_EMPLEADOS)
         repositorio = self.__repositorios["empleados"]
         while True:
+            self.__exigir(Permiso.GESTIONAR_EMPLEADOS)  # en cada vuelta: la sesión pudo expirar dentro del submenú
             print("\n--- Empleados ---\n1. Listar\n2. Crear\n3. Editar datos de contacto\n4. Eliminar"
                   "\n5. Ver salario\n6. Calcular pago en moneda extranjera\n0. Volver")
             opcion = input("Opción: ").strip()
@@ -432,6 +459,7 @@ class SistemaEcoTech():
         self.__exigir(Permiso.GESTIONAR_PROYECTOS)
         repositorio = self.__repositorios["asignaciones"]
         while True:
+            self.__exigir(Permiso.GESTIONAR_PROYECTOS)  # en cada vuelta: la sesión pudo expirar dentro del submenú
             print("\n--- Asignaciones ---\n1. Listar por proyecto\n2. Asignar empleado a proyecto\n3. Finalizar asignación\n0. Volver")
             opcion = input("Opción: ").strip()
             try:
@@ -443,25 +471,33 @@ class SistemaEcoTech():
                         estado = "activa" if a["fecha_fin"] is None else f"finalizada {a['fecha_fin']:%d-%m-%Y}"
                         print(f"  [{a['id_asignacion']}] empleado {a['id_empleado']} | {a['rol_en_proyecto'] or 'sin rol'} | {estado}")
                 elif opcion == "2":
-                    id_empleado = self.__pedir_entero(" - Id del empleado: ")
-                    id_proyecto = self.__pedir_entero(" - Id del proyecto: ")
-                    if repositorio.esta_asignado(id_empleado, id_proyecto):
+                    fila_empleado = self.__repositorios["empleados"].buscar_por_id(self.__pedir_entero(" - Id del empleado: "))
+                    fila_proyecto = self.__repositorios["proyectos"].buscar_por_id(self.__pedir_entero(" - Id del proyecto: "))
+                    if not fila_empleado or not fila_proyecto:
+                        print("[WARNING] Empleado o proyecto no encontrado")
+                        continue
+                    if repositorio.esta_asignado(fila_empleado["id_empleado"], fila_proyecto["id_proyecto"]):
                         print("[WARNING] El empleado ya tiene una asignación activa en ese proyecto")
                         continue
-                    rol = self.__pedir_texto(" - Rol en el proyecto (opcional): ", 60, False)
-                    Asignacion(None, None, rol)  # valida el rol con las reglas del modelo
-                    repositorio.insertar({"id_empleado": id_empleado, "id_proyecto": id_proyecto,
-                                          "rol_en_proyecto": rol, "fecha_asignacion": date.today()})
+                    # Clase asociativa del diagrama: une el objeto Empleado con el objeto Proyecto
+                    asignacion = Asignacion(self.__empleado_desde_fila(fila_empleado),
+                                            self.__proyecto_desde_fila(fila_proyecto),
+                                            self.__pedir_texto(" - Rol en el proyecto (opcional): ", 60, False))
+                    repositorio.insertar(asignacion)
                 elif opcion == "3":
                     fila = repositorio.buscar_por_id(self.__pedir_entero(" - Id de la asignación: "))
                     if not fila:
                         print("[WARNING] Asignación no encontrada")
                         continue
-                    asignacion = Asignacion(None, None, fila["rol_en_proyecto"], fila["fecha_asignacion"],
-                                            fila["fecha_fin"], fila["id_asignacion"])
+                    asignacion = Asignacion(
+                        self.__empleado_desde_fila(self.__repositorios["empleados"].buscar_por_id(fila["id_empleado"])),
+                        self.__proyecto_desde_fila(self.__repositorios["proyectos"].buscar_por_id(fila["id_proyecto"])),
+                        fila["rol_en_proyecto"], fila["fecha_asignacion"], fila["fecha_fin"], fila["id_asignacion"])
+                    if not asignacion.esta_activa():
+                        print("[WARNING] La asignación ya estaba finalizada")
+                        continue
                     asignacion.finalizar()  # valida fecha_fin >= fecha_asignacion
-                    fila["fecha_fin"] = asignacion.fecha_fin
-                    if repositorio.actualizar(fila):
+                    if repositorio.actualizar(asignacion):
                         print("[INFO] Asignación finalizada (se conserva en el historial)")
                 elif opcion == "0":
                     return
@@ -478,44 +514,48 @@ class SistemaEcoTech():
         registros = self.__repositorios["registros"]
         id_empleado = self.__usuario_actual().id_empleado  # cada usuario registra SUS horas
         while True:
+            self.__exigir(Permiso.REGISTRAR_HORAS)  # en cada vuelta: la sesión pudo expirar dentro del submenú
             print("\n--- Registro de horas ---\n1. Registrar horas\n2. Listar mis horas\n0. Volver")
             opcion = input("Opción: ").strip()
-            if opcion == "1":
-                id_proyecto = self.__pedir_entero(" - Id del proyecto: ")
-                # RF4: solo puede registrar horas en un proyecto donde está asignado
-                if not self.__repositorios["asignaciones"].esta_asignado(id_empleado, id_proyecto):
-                    print("[WARNING] No tiene una asignación activa en ese proyecto")
-                    continue
-                horas = self.__pedir_numero(" - Horas trabajadas (más de 0 y hasta 24): ")
-                if not Validador.validar_horas(horas):
-                    print("[WARNING] Las horas deben ser mayores a 0 y hasta 24")
-                    continue
-                fecha = self.__pedir_fecha(" - Fecha (dd-mm-aaaa, Enter = hoy): ", True)
-                if fecha > date.today():
-                    print("[WARNING] No se pueden registrar horas en fechas futuras")
-                    continue
-                registros.insertar({"id_empleado": id_empleado, "id_proyecto": id_proyecto, "fecha": fecha,
-                                    "horas_trabajadas": horas,
-                                    "descripcion": self.__pedir_texto(" - Descripción (opcional): ", 300, False)})
-            elif opcion == "2":
-                propios = [r for r in registros.listar() if r["id_empleado"] == id_empleado]
-                if not propios:
-                    print("  (sin horas registradas)")
-                for r in propios:
-                    print(f"  {r['fecha']:%d-%m-%Y} | proyecto {r['id_proyecto']} | {r['horas_trabajadas']} h | {r['descripcion'] or ''}")
-            elif opcion == "0":
-                return
-            else:
-                print("[WARNING] Opción no válida")
+            try:
+                if opcion == "1":
+                    fila_proyecto = self.__repositorios["proyectos"].buscar_por_id(self.__pedir_entero(" - Id del proyecto: "))
+                    if not fila_proyecto:
+                        print("[WARNING] Proyecto no encontrado")
+                        continue
+                    # RF4: solo puede registrar horas en un proyecto donde está asignado
+                    if not self.__repositorios["asignaciones"].esta_asignado(id_empleado, fila_proyecto["id_proyecto"]):
+                        print("[WARNING] No tiene una asignación activa en ese proyecto")
+                        continue
+                    # RegistroTiempo.__validar() revisa horas (0 a 24], fecha no futura y descripción
+                    registro = RegistroTiempo(
+                        self.__empleado_desde_fila(self.__repositorios["empleados"].buscar_por_id(id_empleado)),
+                        self.__proyecto_desde_fila(fila_proyecto),
+                        self.__pedir_fecha(" - Fecha (dd-mm-aaaa, Enter = hoy): ", True),
+                        self.__pedir_numero(" - Horas trabajadas (más de 0 y hasta 24): "),
+                        self.__pedir_texto(" - Descripción (opcional): ", 300, False))
+                    registros.insertar(registro)
+                elif opcion == "2":
+                    propios = [r for r in registros.listar() if r["id_empleado"] == id_empleado]
+                    if not propios:
+                        print("  (sin horas registradas)")
+                    for r in propios:
+                        print(f"  {r['fecha']:%d-%m-%Y} | proyecto {r['id_proyecto']} | {r['horas_trabajadas']} h | {r['descripcion'] or ''}")
+                elif opcion == "0":
+                    return
+                else:
+                    print("[WARNING] Opción no válida")
+            except ValueError as e:
+                print(f"[WARNING] {e}")
 
     # ==================================================================
     # 6. Usuarios (solo ADMINISTRADOR)
     # ==================================================================
     def __menu_usuarios(self):
-        if not self.__es_administrador():
-            raise AccesoDenegadoError("Gestión de usuarios reservada al ADMINISTRADOR")
+        self.__exigir_administrador()
         repositorio = self.__repositorios["usuarios"]
         while True:
+            self.__exigir_administrador()  # en cada vuelta: la sesión pudo expirar
             print("\n--- Usuarios ---\n1. Listar\n2. Crear usuario para un empleado\n3. Desbloquear cuenta\n0. Volver")
             opcion = input("Opción: ").strip()
             if opcion == "1":
@@ -558,6 +598,7 @@ class SistemaEcoTech():
         self.__exigir(Permiso.CONSULTAR_APIS)
         externos = self.__repositorios["externos"]
         while True:
+            self.__exigir(Permiso.CONSULTAR_APIS)  # en cada vuelta: la sesión pudo expirar dentro del submenú
             print("\n--- Servicios externos ---\n1. Clima de un proyecto\n2. Valor de una moneda"
                   "\n3. Ejecutar ahora la rutina de las 08:00\n4. Ver climas guardados\n5. Ver indicadores guardados\n0. Volver")
             opcion = input("Opción: ").strip()
@@ -612,13 +653,13 @@ class SistemaEcoTech():
             ("3", "Empleados y salarios", Permiso.GESTIONAR_EMPLEADOS),
             ("4", "Asignaciones", Permiso.GESTIONAR_PROYECTOS),
             ("5", "Registro de horas", Permiso.REGISTRAR_HORAS),
+            ("6", "Usuarios", None),  # None = reservado al rol ADMINISTRADOR
             ("7", "Clima e indicadores (APIs)", Permiso.CONSULTAR_APIS),
         ]
         for numero, texto, permiso in opciones:
-            if usuario.tiene_permiso(permiso):
+            visible = self.__es_administrador() if permiso is None else usuario.tiene_permiso(permiso)
+            if visible:
                 print(f"{numero}. {texto}")
-        if self.__es_administrador():
-            print("6. Usuarios")
         print("9. Cerrar sesión\n0. Salir")
 
     def ejecutar(self):
@@ -690,6 +731,13 @@ Registro uso de IA (Claude):
 - ¿Qué se descartó?: Un login que comparaba la contraseña en texto plano (ver abajo).
 - Justificación: Cumple el criterio 3.1.2 (solo usuarios autenticados acceden y cada
   opción exige su permiso) sin exponer información sensible en consola.
+- Revisión final (22-11), tras evaluar el código contra la rúbrica:
+  1. Asignaciones, horas y "asignar empleado a departamento" ahora arman los objetos
+     del modelo (Asignacion, RegistroTiempo, Departamento.agregar_empleado) y se los
+     pasan al repositorio, en vez de guardar diccionarios. Así las reglas del diagrama
+     (RegistroTiempo.__validar, agregación 0..1) se aplican siempre.
+  2. Cada submenú vuelve a exigir el permiso en cada vuelta del bucle: antes la
+     expiración de 30 minutos solo se revisaba al entrar al submenú.
 
 Código propuesto por la IA y DESCARTADO:
 
@@ -708,4 +756,14 @@ Por qué se descartó:
   2. Compara la contraseña en texto plano: obligaría a guardarla sin hash SHA-512.
   3. input() muestra la contraseña en pantalla; getpass() la oculta.
   4. No cuenta intentos fallidos ni bloquea la cuenta (fuerza bruta ilimitada).
+
+    # Versión anterior del registro de horas (descartada en la revisión final)
+    horas = self.__pedir_numero(" - Horas trabajadas: ")
+    if not Validador.validar_horas(horas): ...
+    if fecha > date.today(): ...
+    registros.insertar({"id_empleado": id_empleado, "id_proyecto": id_proyecto, ...})
+
+Por qué se descartó: repetía a mano las reglas que ya tiene RegistroTiempo.__validar()
+(duplicación de código) y guardaba un diccionario, así que la clase del diagrama no
+participaba en el flujo real del programa.
 """

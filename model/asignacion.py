@@ -17,6 +17,9 @@ class Asignacion():
 
     def __init__(self, empleado: Empleado, proyecto: Proyecto, rol_en_proyecto: str = None,
                  fecha_asignacion: date = None, fecha_fin: date = None, id_asignacion: int = None):
+        # Una asignación siempre une a un empleado con un proyecto (clase asociativa)
+        if empleado is None or proyecto is None:
+            raise ValueError("La asignación necesita un empleado y un proyecto")
         if rol_en_proyecto and not Validador.validar_texto(rol_en_proyecto, 60):
             raise ValueError("Rol en el proyecto inválido (máximo 60 caracteres)")
 
@@ -47,6 +50,16 @@ class Asignacion():
     @property
     def proyecto(self):
         return self.__proyecto
+
+    # Ids de los dos extremos: son las FK de la tabla ASIGNACION. Así
+    # RepositorioAsignacion puede recibir el objeto completo (lee estos campos)
+    @property
+    def id_empleado(self):
+        return self.__empleado.id_empleado
+
+    @property
+    def id_proyecto(self):
+        return self.__proyecto.id_proyecto
 
     @property
     def rol_en_proyecto(self):
@@ -84,6 +97,9 @@ Registro uso de IA (Claude):
 - ¿Qué se modificó?: fecha_asignacion es hoy por defecto; finalizar() recibe una fecha
   opcional para poder registrar términos pasados.
 - ¿Qué se descartó?: Marcar la asignación con un booleano "activa" (ver abajo).
+- Revisión final (22-11): main.py creaba Asignacion(None, None, rol) solo para validar
+  el rol y guardaba un diccionario. Ahora el constructor exige empleado y proyecto, y
+  las properties id_empleado / id_proyecto permiten guardar el objeto directamente.
 
 Código propuesto por la IA y DESCARTADO:
 
@@ -92,4 +108,12 @@ Código propuesto por la IA y DESCARTADO:
 
 Por qué se descartó: se perdería CUÁNDO terminó la asignación, y la tabla ASIGNACION
 guarda fecha_fin. Con la fecha, "activa" se calcula y nunca queda desincronizada.
+
+    # main.py (versión anterior)
+    Asignacion(None, None, rol)  # valida el rol con las reglas del modelo
+    repositorio.insertar({"id_empleado": id_empleado, "id_proyecto": id_proyecto, ...})
+
+Por qué se descartó: creaba un objeto sin sus dos extremos (una asignación sin
+empleado ni proyecto no tiene sentido en el diagrama) y guardaba un diccionario en
+vez de la clase asociativa, perdiendo la coherencia entre el UML y el código.
 """

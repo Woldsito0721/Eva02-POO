@@ -517,7 +517,7 @@ class RepositorioDatoExterno(RepositorioCRUD):
 Registro uso de IA (Claude):
 - ¿Qué generó la herramienta?: Los 7 repositorios concretos que heredan de
   RepositorioCRUD, con el SQL parametrizado de cada tabla y métodos extra del
-  diagrama/manual (listar_por_proyecto, buscar_por_nombre, actualizar_intentos,
+  diagrama de clases (listar_por_proyecto, buscar_por_nombre, actualizar_intentos,
   guardar_clima, guardar_indicador).
 - ¿Qué se adoptó?: Un repositorio por tabla, SQL con parámetros :nombre y uso de los
   métodos heredados (_insertar_con_id, _consultar_uno, _consultar_varios, _modificar).
