@@ -1,7 +1,7 @@
 import re
 
 """
-Rgistro uso de IA:
+Registro uso de IA:
 - ¿Qué generó la herramienta?: Métodos básicos que solo verificaban que los textos no estuvieran vacíos, sin control de longitud máxima ni validación estricta para ciudades, monedas o tipos booleanos.
 - ¿Qué se adoptó?: La estructura de clase utilitaria con decoradores @staticmethod y el uso del módulo estándar re (expresiones regulares).
 - ¿Qué se modificó?: Se agregaron límites de longitud acordes a las columnas VARCHAR2 de Oracle, exclusión explícita de bool en validar_horas() y listas blancas (regex) para validar_ciudad() y validar_codigo_moneda().
@@ -30,8 +30,12 @@ class Validador:
     def validar_telefono(tel: str) -> bool:
         if not isinstance(tel, str):
             return False
-        patron = r"^\+?[0-9\s-]{8,15}$"
-        return bool(re.match(patron, tel.strip()))
+        # Solo se permiten dígitos, espacios, guiones y un + inicial...
+        if not re.match(r"^\+?[0-9\s-]+$", tel.strip()):
+            return False
+        # ...y se cuentan los dígitos reales: "--------" o puros espacios no son teléfonos
+        digitos = re.sub(r"\D", "", tel)
+        return 8 <= len(digitos) <= 15
 
     @staticmethod
     def validar_horas(horas: float) -> bool:
@@ -42,7 +46,7 @@ class Validador:
     def validar_ciudad(ciudad: str) -> bool:
         if not isinstance(ciudad, str):
             return False
-        patron = r"^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s-]{2,60}$"
+        patron = r"^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]{2,80}$"  # 80 = VARCHAR2(80) de PROYECTO.ciudad
         return bool(re.match(patron, ciudad.strip()))
 
     @staticmethod
@@ -54,5 +58,27 @@ class Validador:
     def sanitizar(texto: str) -> str:
         if not isinstance(texto, str):
             return ""
-        limpio = re.sub(r"[\x00-\x1f\x7f<>\"';]", "", texto)
+        # Se quitan caracteres de control y < > " ; (inyección en consola/URL).
+        # El apóstrofe se conserva (O'Higgins): la inyección SQL ya la impiden
+        # las consultas parametrizadas (:nombre), no este método.
+        limpio = re.sub(r"[\x00-\x1f\x7f<>\";]", "", texto)
         return " ".join(limpio.split())
+
+
+"""
+Corrección de integración (auditoría):
+- validar_telefono() contaba caracteres, no dígitos: aceptaba "--------". Ahora exige
+  entre 8 y 15 dígitos reales.
+- validar_ciudad() permitía hasta 60 caracteres, pero PROYECTO.ciudad y DATO_CLIMA.ciudad
+  son VARCHAR2(80); se amplió a 80 y se aceptó el apóstrofe.
+- sanitizar() ya no elimina el apóstrofe, para no romper nombres como O'Higgins.
+
+Código propuesto por la IA y DESCARTADO:
+
+    @staticmethod
+    def validar_correo(correo: str) -> bool:
+        return "@" in correo and "." in correo
+
+Por qué se descartó: acepta valores como "@." o "a@b." y no limita los caracteres
+permitidos. La expresión regular exige usuario, dominio y extensión de al menos 2 letras.
+"""

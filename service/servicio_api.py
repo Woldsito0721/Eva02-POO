@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 import requests
 
 """
@@ -6,8 +6,9 @@ REGISTRO DE USO DE IA (Criterios 3.1.1 / 3.1.3 / 3.1.4):
 - ¿Qué se solicitó?: Implementar la clase abstracta ServicioAPI y la excepción ErrorServicioExterno para centralizar las peticiones HTTP GET con requests.
 - ¿Qué generó la herramienta?: Una función directa con requests.get() sin parámetro timeout, sin validación explícita de códigos HTTP y exponiendo el traceback de la librería al usuario.
 - ¿Qué se adoptó?: El uso de la librería oficial requests y la encapsulación en una clase base abstracta (ABC) reutilizable.
-- ¿Qué se modificó?: Se fijó timeout=10 por defecto, se implementó _validar_codigo() para gestionar estados 200/404/500 y se capturaron Timeout, ConnectionError y HTTPError transformándolos en ErrorServicioExterno.
-- ¿Qué se descartó?: Imprimir excepciones crudas de requests que pudieran filtrar URLs con api_key o parámetros internos.
+- ¿Qué se modificó?: Se fijó un tiempo de espera de 10 s, se implementó _validar_codigo() para gestionar estados 200/404/500 y se capturaron Timeout, ConnectionError y el resto de RequestException transformándolos en ErrorServicioExterno.
+  Tras la auditoría: se agregó el método abstracto consultar() (sin él, ServicioAPI se podía instanciar), se tradujeron los nombres al español (_obtener_json, ruta, parametros, tiempo_espera), se quitó api_key porque Open-Meteo y mindicador.cl no la usan, y _obtener_json acepta una url_base opcional para no modificar atributos compartidos entre hilos.
+- ¿Qué se descartó?: Imprimir excepciones crudas de requests que pudieran filtrar URLs o parámetros internos.
 - Justificación: Garantiza la continuidad operativa del sistema ante fallos de red y protege información sensible en los mensajes de error.
 """
 
@@ -19,7 +20,7 @@ class ErrorServicioExterno(Exception):
         self.__codigo_http: int = codigo_http
         self.__detalle_interno: str = detalle_interno
 
-    def get_codigo_http(self) -> int:
+    def obtener_codigo_http(self) -> int:
         return self.__codigo_http
 
     def mensaje_seguro(self) -> str:
@@ -32,15 +33,15 @@ class ErrorServicioExterno(Exception):
         return "Servicio externo: no fue posible completar la consulta por un problema de conexión o tiempo de espera."
 
 
-# Clase base abstracta que centraliza las solicitudes HTTP GET, timeouts y validación de respuestas JSON.
+# Clase base abstracta que centraliza las solicitudes HTTP GET, tiempos de espera y validación de respuestas JSON.
 class ServicioAPI(ABC):
-    def __init__(self, url_base: str, timeout: int = 10, api_key: str = "") -> None:
+    def __init__(self, url_base: str, tiempo_espera: int = 10) -> None:
         self._url_base: str = url_base.rstrip("/")
-        self._timeout: int = timeout
-        self.__api_key: str = api_key
+        self._tiempo_espera: int = tiempo_espera
 
-    def _get_api_key(self) -> str:
-        return self.__api_key
+    @abstractmethod
+    def consultar(self, parametro: str):
+        """ Cada servicio define su consulta principal (clima por ciudad, indicador por moneda) """
 
     def _validar_codigo(self, respuesta: requests.Response) -> None:
         if respuesta.status_code != 200:
@@ -49,11 +50,12 @@ class ServicioAPI(ABC):
                 detalle_interno=f"Respuesta HTTP inesperada: {respuesta.status_code}",
             )
 
-    def _get(self, endpoint: str, params: dict | None = None) -> dict:
-        url = f"{self._url_base}/{endpoint.lstrip('/')}" if endpoint else self._url_base
+    def _obtener_json(self, ruta: str, parametros: dict | None = None, url_base: str | None = None) -> dict:
+        base = (url_base or self._url_base).rstrip("/")
+        url = f"{base}/{ruta.lstrip('/')}" if ruta else base
         try:
-            respuesta = requests.get(url, params=params, timeout=self._timeout)
-            self._validar_codigo(respuesta)
+            respuesta = requests.get(url, params=parametros, timeout=self._tiempo_espera)
+            self._validar_codigo(respuesta)  # cualquier código distinto de 200 → ErrorServicioExterno
             return respuesta.json()
         except ErrorServicioExterno:
             raise
@@ -65,13 +67,25 @@ class ServicioAPI(ABC):
             raise ErrorServicioExterno(
                 detalle_interno="Error de conectividad de red con la API externa."
             ) from exc
-        except requests.exceptions.HTTPError as exc:
-            codigo = exc.response.status_code if exc.response is not None else 0
+        except requests.exceptions.RequestException as exc:  # SSLError, TooManyRedirects, etc.
             raise ErrorServicioExterno(
-                codigo_http=codigo,
-                detalle_interno=f"Fallo HTTP {codigo} en solicitud GET.",
+                detalle_interno="Fallo inesperado en la solicitud HTTP."
             ) from exc
         except ValueError as exc:
             raise ErrorServicioExterno(
                 detalle_interno="La respuesta de la API externa no tiene un formato JSON válido."
             ) from exc
+
+
+"""
+Código propuesto por la IA y DESCARTADO:
+
+        except requests.exceptions.HTTPError as exc:
+            codigo = exc.response.status_code if exc.response is not None else 0
+            raise ErrorServicioExterno(codigo_http=codigo, ...) from exc
+
+Por qué se descartó: requests.get() nunca lanza HTTPError por sí solo (solo lo hace
+raise_for_status(), que no se usa); los códigos 404/500 ya los detecta
+_validar_codigo(). Ese bloque era código inalcanzable. Se reemplazó por
+RequestException, que sí cubre errores reales no previstos (SSL, redirecciones).
+"""
