@@ -1,5 +1,8 @@
 .vscode
 
+# Archivos generados localmente que no deben subirse
+reportes/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
