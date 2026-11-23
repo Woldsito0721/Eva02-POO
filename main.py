@@ -144,7 +144,7 @@ class SistemaEcoTech():
 
         print("[INFO] Conectando a Oracle FreeSQL...")
         if not self.__conexion.conectar():
-            print("[ERROR] No se pudo iniciar: revise el .env (python -m test.prueba_conexion)")
+            print("[ERROR] No se pudo iniciar: revise el .env y la red (ver README.md)")
             return False
 
         self.__repositorios = {
