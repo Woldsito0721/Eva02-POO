@@ -117,21 +117,6 @@ class RepositorioEmpleado(RepositorioCRUD):
         """
         return self._modificar(sql, {columna: leer_campo(empleado, columna) for columna in self.__COLUMNAS})
 
-    def empleados_por_departamento(self) -> list:
-        """ Reporte: cada departamento con su gerente y sus empleados, más los que no tienen departamento """
-        sql = """
-            select d.nombre, g.nombre, e.nombre, e.correo
-              from departamento d
-              join empleado g on g.id_empleado = d.id_gerente
-              left join empleado e on e.id_departamento = d.id_departamento
-            union all
-            select 'Sin departamento', null, e.nombre, e.correo
-              from empleado e
-             where e.id_departamento is null
-             order by 1, 3
-        """
-        return filas_a_diccionarios(("departamento", "gerente", "empleado", "correo"), self._consultar_varios(sql))
-
     def eliminar(self, id: int) -> bool:
         # Con asignaciones, horas o siendo gerente → ORA-02292 (lo informa _ejecutar)
         # Su USUARIO se borra solo (ON DELETE CASCADE)
@@ -246,18 +231,6 @@ class RepositorioAsignacion(RepositorioCRUD):
         fila = self._consultar_uno(sql, {"id_empleado": id_empleado, "id_proyecto": id_proyecto})
         return bool(fila and fila[0] > 0)
 
-    def detalle_por_proyecto(self, id_proyecto: int) -> list:
-        """ Reporte: asignaciones de un proyecto con el nombre del empleado """
-        sql = """
-            select e.nombre, a.rol_en_proyecto, a.fecha_asignacion, a.fecha_fin
-              from asignacion a
-              join empleado e on e.id_empleado = a.id_empleado
-             where a.id_proyecto = :id_proyecto
-             order by a.fecha_asignacion, e.nombre
-        """
-        return filas_a_diccionarios(("empleado", "rol_en_proyecto", "fecha_asignacion", "fecha_fin"),
-                                    self._consultar_varios(sql, {"id_proyecto": id_proyecto}))
-
     def actualizar(self, asignacion) -> bool:
         # Si fecha_fin < fecha_asignacion, Oracle responde ORA-02290 (CHECK)
         sql = """
@@ -321,32 +294,6 @@ class RepositorioRegistroTiempo(RepositorioCRUD):
         sql = "select nvl(sum(horas_trabajadas), 0) from registro_tiempo where id_proyecto = :id_proyecto"
         fila = self._consultar_uno(sql, {"id_proyecto": id_proyecto})
         return float(fila[0]) if fila else 0.0
-
-    def horas_por_proyecto(self) -> list:
-        """ Reporte: total de horas de cada empleado en cada proyecto """
-        sql = """
-            select p.nombre, e.nombre, sum(r.horas_trabajadas)
-              from registro_tiempo r
-              join proyecto p on p.id_proyecto = r.id_proyecto
-              join empleado e on e.id_empleado = r.id_empleado
-             group by p.id_proyecto, p.nombre, e.id_empleado, e.nombre
-             order by p.nombre, e.nombre
-        """
-        return filas_a_diccionarios(("proyecto", "empleado", "horas"), self._consultar_varios(sql))
-
-    def horas_de_empleado(self, id_empleado: int, desde, hasta) -> list:
-        """ Reporte: horas de un empleado entre dos fechas (incluidas) """
-        sql = """
-            select r.fecha, p.nombre, r.horas_trabajadas, r.descripcion
-              from registro_tiempo r
-              join proyecto p on p.id_proyecto = r.id_proyecto
-             where r.id_empleado = :id_empleado
-               and r.fecha between trunc(:desde) and trunc(:hasta)
-             order by r.fecha, p.nombre
-        """
-        return filas_a_diccionarios(("fecha", "proyecto", "horas", "descripcion"),
-                                    self._consultar_varios(sql, {"id_empleado": id_empleado,
-                                                                 "desde": desde, "hasta": hasta}))
 
     def listar_por_empleado(self, id_empleado: int) -> list:
         """ Horas de un solo empleado (menú 'Listar mis horas') """
@@ -520,18 +467,6 @@ class RepositorioDatoExterno(RepositorioCRUD):
         """
         return fila_a_diccionario(self.__COLUMNAS_CLIMA, self._consultar_uno(sql, {"id_proyecto": id_proyecto}))
 
-    def ultimo_clima_por_ciudad(self) -> list:
-        """ Reporte: la lectura más reciente de cada ciudad """
-        sql = """
-            select ciudad, temperatura, humedad, estado, fecha_consulta
-              from (select d.*, row_number() over (partition by ciudad order by fecha_consulta desc) n
-                      from dato_clima d)
-             where n = 1
-             order by ciudad
-        """
-        return filas_a_diccionarios(("ciudad", "temperatura", "humedad", "estado", "fecha_consulta"),
-                                    self._consultar_varios(sql))
-
     def actualizar(self, dato_clima) -> bool:
         sql = """
             update dato_clima set temperatura = :temperatura, humedad = :humedad, estado = :estado
@@ -606,10 +541,7 @@ Registro uso de IA (Claude):
   regla de no armar SQL con f-strings.
 - Cambio (23-11): guardar_clima() acepta lecturas sin proyecto (clima por ciudad), se
   agregaron ultimo_indicador() (valor guardado cuando la API de monedas no responde),
-  listar_por_empleado() (antes main.py traía TODAS las horas y filtraba en Python) y las
-  consultas de los reportes (horas_por_proyecto, horas_de_empleado, empleados_por_departamento,
-  detalle_por_proyecto, ultimo_clima_por_ciudad), todas parametrizadas y con JOIN/GROUP BY
-  en Oracle en vez de recorrer listas en Python.
+  y listar_por_empleado() (antes main.py traía TODAS las horas y filtraba en Python).
 - ¿Qué se descartó?: La primera versión de guardar_indicador (ver abajo).
 - Justificación: Separar el SQL del dominio (patrón Repositorio) cumple el principio de
   responsabilidad única y permite que model/ no conozca a Oracle.

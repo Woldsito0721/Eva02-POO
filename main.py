@@ -32,9 +32,6 @@ from model.usuario import Usuario
 from security.servicio_cifrado import ServicioCifrado
 from security.sesion import AccesoDenegadoError, Sesion
 from security.validador import Validador
-from report.exportador_excel import ExportadorExcel
-from report.exportador_pdf import ExportadorPDF
-from report.generador_informes import GeneradorInformes
 from service.carga_inicial import CargaInicial
 from service.servicio_api import ErrorServicioExterno
 from service.servicio_clima import ServicioClima
@@ -50,7 +47,6 @@ class SistemaEcoTech():
         self.__conexion = None
         self.__sesion = None
         self.__cifrado = None
-        self.__informes = None
         self.__repositorios = {}
         self.__clima = ServicioClima()
         self.__indicadores = ServicioIndicadores()
@@ -161,7 +157,6 @@ class SistemaEcoTech():
             "usuarios": RepositorioUsuario(self.__conexion),
             "externos": RepositorioDatoExterno(self.__conexion),
         }
-        self.__informes = GeneradorInformes(self.__repositorios, self.__cifrado)
         return True
 
     def __crear_administrador_inicial(self) -> bool:
@@ -687,68 +682,6 @@ class SistemaEcoTech():
                 print(f"[WARNING] {e.mensaje_seguro()}")  # nunca la URL ni el detalle técnico
 
     # ==================================================================
-    # 8. Reportes (PDF o Excel)
-    # ==================================================================
-    def __menu_reportes(self):
-        self.__exigir(Permiso.GENERAR_INFORMES)
-        informes = self.__informes
-        while True:
-            self.__exigir(Permiso.GENERAR_INFORMES)  # en cada vuelta: la sesión pudo expirar
-            usuario = self.__usuario_actual()
-            print("\n--- Reportes ---")
-            for numero, titulo in GeneradorInformes.INFORMES:
-                # El de pagos descifra salarios: solo se muestra con VER_SALARIOS
-                if numero != "6" or usuario.tiene_permiso(Permiso.VER_SALARIOS):
-                    print(f"{numero}. {titulo}")
-            print("0. Volver")
-            opcion = input("Opción: ").strip()
-            try:
-                if opcion == "0":
-                    return
-                elif opcion == "1":
-                    informe = informes.horas_por_proyecto(usuario)
-                elif opcion == "2":
-                    informe = informes.horas_de_empleado(
-                        usuario, self.__pedir_entero(" - Id del empleado: "),
-                        self.__pedir_fecha(" - Desde (dd-mm-aaaa): "),
-                        self.__pedir_fecha(" - Hasta (dd-mm-aaaa, Enter = hoy): ", True))
-                elif opcion == "3":
-                    informe = informes.empleados_por_departamento(usuario)
-                elif opcion == "4":
-                    informe = informes.asignaciones_de_proyecto(usuario, self.__pedir_entero(" - Id del proyecto: "))
-                elif opcion == "5":
-                    informe = informes.clima_e_indicadores(usuario)
-                elif opcion == "6":
-                    self.__exigir(Permiso.VER_SALARIOS)
-                    informe = informes.pagos_en_moneda(usuario, self.__obtener_indicador)
-                else:
-                    print("[WARNING] Opción no válida")
-                    continue
-
-                if informe.esta_vacio():
-                    print("[WARNING] No hay datos para este reporte")
-                    continue
-                print(f"[INFO] {informe.titulo}: {len(informe.filas)} filas")
-                exportador = self.__elegir_formato()
-                if exportador:
-                    ruta = exportador.exportar(informe)
-                    print(f"[INFO] Reporte {exportador.nombre_formato} guardado en: {ruta}")
-            except ValueError as e:
-                print(f"[WARNING] {e}")
-
-    def __elegir_formato(self):
-        """ Polimorfismo: el menú trabaja con 'Exportador' sin saber si es PDF o Excel """
-        while True:
-            opcion = input("Formato del reporte:\n1. PDF\n2. Excel\n0. Cancelar\nOpción: ").strip()
-            if opcion == "1":
-                return ExportadorPDF()
-            if opcion == "2":
-                return ExportadorExcel()
-            if opcion == "0":
-                return None
-            print("[WARNING] Opción no válida")
-
-    # ==================================================================
     # Ciclo principal
     # ==================================================================
     def mostrar_menu(self):
@@ -763,7 +696,6 @@ class SistemaEcoTech():
             ("5", "Registro de horas", Permiso.REGISTRAR_HORAS),
             ("6", "Usuarios", None),  # None = reservado al rol ADMINISTRADOR
             ("7", "Clima y monedas", Permiso.CONSULTAR_APIS),
-            ("8", "Reportes (PDF / Excel)", Permiso.GENERAR_INFORMES),
         ]
         for numero, texto, permiso in opciones:
             visible = self.__es_administrador() if permiso is None else usuario.tiene_permiso(permiso)
@@ -785,7 +717,7 @@ class SistemaEcoTech():
 
             menus = {"1": self.__menu_proyectos, "2": self.__menu_departamentos, "3": self.__menu_empleados,
                      "4": self.__menu_asignaciones, "5": self.__menu_horas, "6": self.__menu_usuarios,
-                     "7": self.__menu_servicios, "8": self.__menu_reportes}
+                     "7": self.__menu_servicios}
 
             while self.__pantalla_login():
                 while self.__sesion:
@@ -850,8 +782,7 @@ Registro uso de IA (Claude):
   2. El menú 7 quedó en "1. Clima" (elegir 1 de 10 ciudades: clima de ahora y pronóstico
      por hora del resto del día) y "2. Monedas" (dólar y euro de una vez). Si la API
      de monedas no responde se usa el último valor guardado en Oracle.
-  3. Nuevo menú 8 de reportes: 6 informes que se exportan a PDF o Excel (paquete report/).
-  4. "Listar mis horas" consulta solo las horas del usuario en Oracle (antes traía todas).
+  3. "Listar mis horas" consulta solo las horas del usuario en Oracle (antes traía todas).
 
 Código propuesto por la IA y DESCARTADO:
 

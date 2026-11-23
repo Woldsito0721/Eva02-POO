@@ -1,6 +1,6 @@
 .vscode
 
-# Reportes PDF/Excel generados por el sistema (contienen datos de empleados)
+# Archivos generados localmente que no deben subirse
 reportes/
 
 # Byte-compiled / optimized / DLL files
