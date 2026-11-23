@@ -44,7 +44,7 @@ class Proyecto():
         self.__asignaciones = []
         self.__registros = []
 
-    # --- Propiedades (TareaProgramada lee ciudad, moneda e id_proyecto) ---
+    # --- Propiedades de solo lectura ---
     @property
     def id_proyecto(self):
         return self.__id_proyecto

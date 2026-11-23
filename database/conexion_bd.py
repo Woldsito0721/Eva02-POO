@@ -25,8 +25,8 @@ class ConexionBD():
         self.__dsn = configuracion.dsn_bd
         self.__conexion = None
         self.__fallo_conexion = False
-        # El menú y la rutina de las 08:00 (otro hilo) comparten esta conexión:
-        # el candado evita que dos operaciones usen Oracle al mismo tiempo
+        # Candado: si algún día dos hilos comparten esta conexión, evita que
+        # dos operaciones usen Oracle al mismo tiempo
         self.__candado = threading.RLock()
 
     @property
@@ -114,8 +114,9 @@ Registro uso de IA (Claude):
 - ¿Qué se modificó?: Se reemplazó traceback.print_exc() por un mensaje con solo el
   código ORA (no expone datos internos) y se agregó __fallo_conexion: durante las
   pruebas, los reintentos automáticos bloquearon la cuenta de FreeSQL (ORA-28000).
-  En la auditoría se agregó un candado (threading.RLock) porque la rutina de las 08:00
-  corre en otro hilo y comparte la conexión, y se captura oracledb.Error para cubrir
+  En la auditoría se agregó un candado (threading.RLock) para que la conexión se pueda
+  compartir entre hilos de forma segura (la antigua rutina de las 08:00 corría en otro
+  hilo; se eliminó el 23-11, pero el candado se mantiene porque no tiene costo), y se captura oracledb.Error para cubrir
   también los errores DPY-* del driver.
 - ¿Qué se descartó?: Un pool de conexiones (ver abajo).
 - Justificación: Es un programa de consola de un solo usuario; una conexión basta y

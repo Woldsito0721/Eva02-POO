@@ -92,8 +92,11 @@ class RepositorioCRUD(ABC):
             cursor.close()
         return None
 
-    def _insertar_con_id(self, sql: str, parametros: dict) -> int:
-        """ INSERT que termina en 'returning id_x into :id_generado'. Retorna el id (0 si falló) """
+    def _insertar_con_id(self, sql: str, parametros: dict, informar: bool = True) -> int:
+        """
+        INSERT que termina en 'returning id_x into :id_generado'. Retorna el id (0 si falló).
+        informar=False no imprime el [INFO] (para cargas automáticas de muchas filas).
+        """
         with self._conexion.candado:
             cursor = self._ejecutar(sql, parametros, crear_id=True)
             if not cursor:
@@ -102,7 +105,8 @@ class RepositorioCRUD(ABC):
             id_generado = int(parametros["id_generado"].getvalue()[0])
             cursor.close()
 
-        print(f"[INFO] {self._tabla} | Registro {id_generado} insertado")
+        if informar:
+            print(f"[INFO] {self._tabla} | Registro {id_generado} insertado")
         return id_generado
 
     def _consultar_uno(self, sql: str, parametros=None):
@@ -149,9 +153,10 @@ Registro uso de IA (Claude):
   distinguir los errores con error.code como enseñó el profesor.
 - ¿Qué se modificó?: Se reemplazó traceback.print_exc() por mensajes con el código ORA
   (no expone detalles internos) y se agregó un diccionario MENSAJES_ORA en español.
-  Tras la auditoría: cada operación se ejecuta dentro del candado de ConexionBD (la
-  rutina de las 08:00 corre en otro hilo), se captura oracledb.Error en vez de solo
+  Tras la auditoría: cada operación se ejecuta dentro del candado de ConexionBD, se captura oracledb.Error en vez de solo
   DatabaseError, y leer_campo() permite recibir objetos de model/ o diccionarios.
+  Cambio (23-11): _insertar_con_id() acepta informar=False para que la carga inicial de las
+  10 ciudades no llene la pantalla con 10 mensajes [INFO].
 - ¿Qué se descartó?: Un eliminar() genérico en la clase padre (ver abajo).
 - Justificación: Cada hijo solo escribe su SQL; el manejo de errores se hereda, lo que
   evita duplicar código (criterio 2.1.2) y garantiza rollback ante cualquier fallo.
