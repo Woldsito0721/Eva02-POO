@@ -662,7 +662,7 @@ class SistemaEcoTech():
             nombre = ServicioIndicadores.NOMBRES[codigo]
             if indicador:
                 valor = f"{indicador.valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                print(f"  {nombre:<6} | ${valor:>22} | {indicador.fecha:%d-%m-%Y}")
+                print(f"  {nombre:<6} | {'$' + valor:>23} | {indicador.fecha:%d-%m-%Y}")
             else:
                 print(f"  {nombre:<6} | {'sin datos':>23} |")
 
