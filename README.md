@@ -7,67 +7,92 @@ asignaciones y horas trabajadas en **Oracle FreeSQL**, con inicio de sesión (co
 SHA-512), permisos por rol, salarios cifrados (Fernet) y consumo de APIs de clima
 (Open-Meteo) e indicadores económicos (mindicador.cl) con una rutina automática a las 08:00.
 
-## Puesta en marcha
+## 1. Instalar
 
-Requisitos: Python 3.10 o superior y una cuenta gratuita en [FreeSQL](https://freesql.com).
-En FreeSQL cada cuenta tiene su propio esquema, así que cada uno crea las tablas en la suya.
+Requisito: Python 3.10 o superior.
 
-1. **Crear las tablas.** En FreeSQL abrir *SQL Worksheet*, pegar todo el contenido de
-   [`sql/crear_tablas.sql`](sql/crear_tablas.sql) y ejecutarlo con **Run Script**.
-   Se crean 8 tablas (el script se puede repetir: borra y vuelve a crear las tablas vacías).
-2. **Datos de conexión.** En FreeSQL: **Connect** → **Regenerate**. Copiar el usuario
-   (esquema), la contraseña generada (no es la de la cuenta Oracle) y el DSN
-   (`tcps://db.freesql.com:2484/<servicio>`).
-3. **Archivo `.env`.** Copiar `.env.example` como `.env` y completarlo:
+```powershell
+git clone https://github.com/Woldsito0721/Eva02-POO.git
+```
+
+```powershell
+cd Eva02-POO
+```
+
+```powershell
+pip install -r requirements.txt
+```
+
+## 2. Conectar a su base de datos de FreeSQL
+
+1. **Crear las tablas:** en FreeSQL abrir **SQL Worksheet**, pegar todo
+   [`sql/crear_tablas.sql`](sql/crear_tablas.sql) y presionar **Run Script**.
+2. **Copiar los datos de conexión:** en FreeSQL presionar **Connect** y copiar
+   *Username*, *Password* y *Service Name*. Si la contraseña ya no se ve, presionar
+   **Regenerate**.
+3. **Crear el archivo `.env`** en la carpeta `Eva02-POO`:
 
    ```powershell
    Copy-Item .env.example .env
    ```
 
-   Para `FERNET_KEY` (clave que cifra los salarios), generar una clave y pegarla:
+   Abrirlo y completarlo así:
+
+   ```
+   DB_USER=<Username>
+   DB_PASSWORD=<Password>
+   DB_DSN=tcps://db.freesql.com:2484/<Service Name>
+   FERNET_KEY=<clave generada con el comando de abajo>
+   ```
 
    ```powershell
    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
    ```
 
-   El `.env` está en `.gitignore`: nunca se sube al repositorio.
-4. **Dependencias:**
+4. **Probar la conexión:**
 
    ```powershell
-   pip install -r requirements.txt
+   python -m database.conexion_bd
    ```
 
-5. **Probar la conexión y ejecutar** desde la raíz del proyecto:
+   Debe mostrar `[INFO] Conexión OK`.
 
-   ```powershell
-   python -m test.prueba_conexion
-   ```
+**Si falla la conexión:** si se queda esperando o muestra `timed out`, la red (por ejemplo,
+el Wi-Fi de la universidad) bloquea el puerto 2484. Conectarse a otra red (compartir
+internet desde un celular) y probar de nuevo.
 
-   ```powershell
-   python main.py
-   ```
+## 3. Ejecutar el sistema
 
-   La primera vez (tabla USUARIO vacía) el programa pide los datos del primer empleado y
-   crea su cuenta ADMINISTRADOR. Desde **6. Usuarios** se crean cuentas GERENTE o EMPLEADO
-   y se desbloquean cuentas bloqueadas por 3 intentos fallidos.
+```powershell
+python main.py
+```
+
+1. **Primera vez:** como la BD está vacía, el sistema pide nombre, correo, salario, usuario
+   y contraseña para crear el **ADMINISTRADOR**. Luego iniciar sesión con ese usuario.
+2. **Menú principal:**
+
+   | Opción | Qué hace |
+   |---|---|
+   | 1. Proyectos | Crear, listar, editar y eliminar proyectos |
+   | 2. Departamentos | Crear departamentos y asignar gerente |
+   | 3. Empleados y salarios | Crear empleados (salario cifrado) |
+   | 4. Asignaciones | Asignar empleados a proyectos |
+   | 5. Registro de horas | Registrar horas trabajadas |
+   | 6. Usuarios | Crear cuentas GERENTE / EMPLEADO y desbloquear cuentas |
+   | 7. Clima e indicadores | Consultar las APIs |
+   | 9 / 0 | Cerrar sesión / Salir |
+
+> Todo se ejecuta **desde la terminal, en la carpeta `Eva02-POO`**. No usar el botón ▶ de
+> VS Code: ejecuta el archivo desde otra carpeta y falla con `No module named 'config'`.
 
 | Error | Solución |
 |---|---|
-| `ORA-01017: invalid username/password` | Usar la contraseña generada con **Regenerate**, no la de la cuenta Oracle |
-| `DPY-6005` / `timed out` | La red bloquea el puerto (ej. Wi-Fi institucional): probar con otra red |
-| `ORA-00942: table or view does not exist` | Ejecutar `sql/crear_tablas.sql` con la misma cuenta del `.env` |
-| `ModuleNotFoundError: oracledb` | `pip install -r requirements.txt` |
-
-## Pruebas
-
-Se ejecutan desde la raíz del proyecto y muestran `[OK]` / `[FALLO]` por cada verificación.
-
-| Comando | Qué prueba | Requiere |
-|---|---|---|
-| `python -m test.prueba_conexion` | `.env`, conexión y las 8 tablas | Oracle |
-| `python -m test.prueba_repositorios` | CRUD de los 7 repositorios y reglas de Oracle (borra sus datos al final) | Oracle |
-| `python -m test.prueba_modelos` | Las 9 clases de `model/`, sesión, permisos y cifrado | Nada |
-| `python -m test.prueba_servicios` | APIs de clima e indicadores y la rutina de las 08:00 | Internet |
+| `No module named 'config'` | Ejecutar desde la terminal en la carpeta `Eva02-POO`, no con ▶ |
+| `timed out` / `DPY-6005` | Cambiar de red |
+| `ORA-01017` | Usuario o contraseña incorrectos en el `.env` |
+| `ORA-28000` | Cuenta bloqueada: **Regenerate** en FreeSQL y actualizar el `.env` |
+| `ORA-00942` | Faltan las tablas: ejecutar `sql/crear_tablas.sql` |
+| `No module named 'oracledb'` | `pip install -r requirements.txt` |
 
 ## Estructura
 
@@ -80,7 +105,6 @@ Se ejecutan desde la raíz del proyecto y muestran `[OK]` / `[FALLO]` por cada v
 | `database/` | `ConexionBD`, `RepositorioCRUD` (abstracta) y los 7 repositorios |
 | `service/` | `ServicioAPI` (abstracta), clima, indicadores y `TareaProgramada` |
 | `sql/` | `crear_tablas.sql` |
-| `test/` | Scripts de prueba |
 | `docs/` | Diagrama de clases y modelo entidad-relación |
 
 ## Diagramas
