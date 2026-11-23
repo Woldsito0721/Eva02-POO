@@ -5,8 +5,7 @@ Evaluación Sumativa Unidades 2 y 3 · Programación Orientada a Objeto Seguro (
 Programa de consola en Python (POO) que gestiona empleados, departamentos, proyectos,
 asignaciones y horas trabajadas en **Oracle FreeSQL**, con inicio de sesión (contraseñas
 SHA-512), permisos por rol, salarios cifrados (Fernet), consumo de APIs de clima
-(Open-Meteo, 10 ciudades de Chile) y monedas (mindicador.cl, con respaldo open.er-api.com),
-y reportes exportables a **PDF** o **Excel**.
+(Open-Meteo, 10 ciudades de Chile) y monedas (mindicador.cl, con respaldo open.er-api.com).
 
 ## 1. Instalar
 
@@ -92,7 +91,6 @@ python main.py
    | 5. Registro de horas | Registrar y ver sus propias horas | ✅ | ✅ | ✅ |
    | 6. Usuarios | Crear cuentas y desbloquear cuentas | ✅ | | |
    | 7. Clima y monedas | Clima de 10 ciudades y valor del dólar y euro | ✅ | ✅ | |
-   | 8. Reportes | 6 reportes en PDF o Excel | ✅ | ✅ | |
    | 9 / 0 | Cerrar sesión / Salir | ✅ | ✅ | ✅ |
 
 ### 7. Clima y monedas
@@ -105,20 +103,6 @@ python main.py
 - **2. Monedas:** valor del **dólar** y del **euro** en pesos chilenos. Usa mindicador.cl;
   si no responde, usa open.er-api.com, y si tampoco hay internet, el último valor guardado.
 
-### 8. Reportes (PDF o Excel)
-
-Se elige el reporte y luego el formato: **1. PDF** o **2. Excel**. El archivo queda en la
-carpeta `reportes/` (se crea sola) con la fecha y hora en el nombre.
-
-| Reporte | Contenido |
-|---|---|
-| 1. Horas por proyecto | Horas de cada empleado en cada proyecto y total por proyecto |
-| 2. Horas de un empleado | Detalle por fecha y proyecto entre dos fechas, con total |
-| 3. Empleados por departamento | Departamento, gerente, empleados y correo |
-| 4. Asignaciones de un proyecto | Empleados, rol, fechas y estado (activa / finalizada) |
-| 5. Clima e indicadores guardados | Última lectura de cada ciudad e historial de monedas |
-| 6. Pagos en moneda extranjera | Salario en CLP, USD y EUR (**solo ADMINISTRADOR**) |
-
 > Todo se ejecuta **desde la terminal, en la carpeta `Eva02-POO`**. No usar el botón ▶ de
 > VS Code: ejecuta el archivo desde otra carpeta y falla con `No module named 'config'`.
 
@@ -129,10 +113,9 @@ carpeta `reportes/` (se crea sola) con la fecha y hora en el nombre.
 | `ORA-01017` | Usuario o contraseña incorrectos en el `.env` |
 | `ORA-28000` | Cuenta bloqueada: **Regenerate** en FreeSQL y actualizar el `.env` |
 | `ORA-00942` | Faltan las tablas: ejecutar `sql/crear_tablas.sql` |
-| `No module named 'oracledb'`, `'openpyxl'` o `'fpdf'` | `pip install -r requirements.txt` |
+| `No module named 'oracledb'` | `pip install -r requirements.txt` |
 | `DATO_CLIMA \| Error de base de datos` al iniciar | Falta ejecutar `sql/actualizar_dato_clima.sql` |
 | Monedas o clima con `[WARNING] Servicio externo...` | Sin internet o la API no responde: se usan los últimos datos guardados |
-| `No se pudo guardar el archivo` en reportes | Cerrar el archivo si está abierto en Excel y reintentar |
 
 ## Estructura
 
@@ -144,9 +127,7 @@ carpeta `reportes/` (se crea sola) con la fecha y hora en el nombre.
 | `security/` | `Sesion`, `ServicioCifrado`, `Validador`, `AccesoDenegadoError` |
 | `database/` | `ConexionBD`, `RepositorioCRUD` (abstracta) y los 7 repositorios |
 | `service/` | `ServicioAPI` (abstracta), `ServicioClima`, `ServicioIndicadores` y `CargaInicial` |
-| `report/` | `Informe`, `Exportador` (abstracta), `ExportadorPDF`, `ExportadorExcel` y `GeneradorInformes` |
 | `sql/` | `crear_tablas.sql` (BD nueva) y `actualizar_dato_clima.sql` (BD existente) |
-| `reportes/` | PDF y Excel generados (no se suben a git) |
 | `docs/` | Diagrama de clases y modelo entidad-relación |
 
 ## Seguridad
@@ -160,7 +141,6 @@ carpeta `reportes/` (se crea sola) con la fecha y hora en el nombre.
 | Inyección SQL | Todas las consultas son parametrizadas (`:nombre`), sin SQL armado con texto |
 | Entradas | `Validador` y los constructores del modelo validan todo antes de llegar a Oracle |
 | APIs | Ciudades y monedas de una lista cerrada; los errores se muestran sin URLs ni detalles internos |
-| Reportes | El nombre del archivo lo arma el sistema (sin `../`); en Excel un texto con `=` no se ejecuta como fórmula |
 | Secretos | Credenciales y clave Fernet solo en `.env`, que no se sube a git |
 
 ## Diagramas
@@ -173,9 +153,8 @@ carpeta `reportes/` (se crea sola) con la fecha y hora en el nombre.
 Cada recuadro de color del diagrama de clases corresponde a una carpeta (`main.py`, `config/`,
 `model/`, `security/`, `database/`, `service/`), y cada clase indica el archivo donde está.
 
-> Cambios del 23-11 aún no dibujados en el diagrama: `TareaProgramada` pasó a `CargaInicial`
-> (sin rutina de las 08:00) y se agregó el paquete `report/` con `Informe`, `Exportador`,
-> `ExportadorPDF`, `ExportadorExcel` y `GeneradorInformes`.
+> Cambio del 23-11 aún no dibujado en el diagrama: `TareaProgramada` pasó a `CargaInicial`
+> (sin rutina de las 08:00).
 
 ## Uso de IA
 
