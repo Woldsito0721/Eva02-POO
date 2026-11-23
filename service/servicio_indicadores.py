@@ -8,13 +8,14 @@ REGISTRO DE USO DE IA (Criterios 3.1.1 / 3.1.2 / 3.1.4):
 - ¿Qué se solicitó?: Implementar ServicioIndicadores heredando de ServicioAPI para consultar indicadores económicos en mindicador.cl.
 - ¿Qué generó la herramienta?: Solicitud directa concatenando el código ingresado a la URL y acceso sin validar a serie[0]["valor"].
 - ¿Qué se adoptó?: La herencia de ServicioAPI utilizando el método protegido _obtener_json() y el parseo JSON de mindicador.cl.
-- ¿Qué se modificó?: Se validó el código ISO de 3 letras con Validador.validar_codigo_moneda(), se mapeó USD/EUR/CLF a los endpoints oficiales de mindicador.cl y se manejó CLP como moneda base (valor 1.0).
+- ¿Qué se modificó?: Se validó el código ISO de 3 letras con Validador.validar_codigo_moneda(), se mapeó USD/EUR a los endpoints oficiales de mindicador.cl y se manejó CLP como moneda base (valor 1.0).
   Cambio (23-11): en las pruebas mindicador.cl dejó de responder (ni con 60 s de espera) y la
   consulta de monedas no mostraba nada. Se agregó una fuente de respaldo sin llave
   (open.er-api.com) para USD y EUR; la espera de mindicador bajó a 5 s y, si falla, no se le
   vuelve a consultar por 10 minutos para que el menú no quede esperando en cada consulta.
-  La UF (CLF) solo la publica mindicador.cl: si no responde, main.py muestra el último
-  valor guardado en Oracle.
+  Si ninguna fuente responde, main.py muestra el último valor guardado en Oracle.
+  Se quitó la UF (CLF), a pedido del equipo: solo la publica mindicador.cl, que no
+  respondía, y no tiene fuente de respaldo.
 - ¿Qué se descartó?: Concatenación de entrada de usuario sin validar en la URL de la petición.
 - Justificación: Garantiza compatibilidad entre los códigos ISO de los proyectos y la API económica chilena, evitando errores de formato o inyección de rutas.
 """
@@ -23,13 +24,12 @@ REGISTRO DE USO DE IA (Criterios 3.1.1 / 3.1.2 / 3.1.4):
 # Consulta valores de divisas e indicadores económicos y retorna IndicadorEconomico.
 class ServicioIndicadores(ServicioAPI):
     # Monedas que muestra el menú y que se cargan al iniciar el programa
-    PRINCIPALES = ("USD", "EUR", "CLF")
-    NOMBRES = {"USD": "Dólar", "EUR": "Euro", "CLF": "UF"}
+    PRINCIPALES = ("USD", "EUR")
+    NOMBRES = {"USD": "Dólar", "EUR": "Euro"}
 
     __MAPA_MONEDAS = {
         "USD": "dolar",
         "EUR": "euro",
-        "CLF": "uf",
     }
     __URL_RESPALDO = "https://open.er-api.com/v6"
     __MINUTOS_PAUSA = 10
@@ -59,8 +59,6 @@ class ServicioIndicadores(ServicioAPI):
         try:
             return self.__desde_mindicador(codigo_limpio, ruta)
         except ErrorServicioExterno:
-            if codigo_limpio == "CLF":
-                raise  # la UF no está en la fuente de respaldo
             return self.__desde_respaldo(codigo_limpio)
 
     # --- Fuente principal: mindicador.cl ---

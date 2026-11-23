@@ -440,8 +440,9 @@ class SistemaEcoTech():
                         print(f"  Salario de {empleado.nombre}: ${salario:,.0f} CLP")
                     else:
                         self.__exigir(Permiso.CONSULTAR_APIS)
-                        codigo = self.__pedir_con_validador(" - Moneda (USD, EUR, CLF): ",
-                                                            Validador.validar_codigo_moneda, "Código de 3 letras")
+                        codigo = self.__pedir_con_validador(" - Moneda (USD o EUR): ",
+                                                            lambda texto: texto.upper() in ServicioIndicadores.PRINCIPALES,
+                                                            "Escriba USD o EUR")
                         indicador = self.__obtener_indicador(codigo.upper())
                         if not indicador:
                             print("[WARNING] No hay valor disponible para esa moneda (sin internet y sin datos guardados)")
@@ -845,9 +846,9 @@ Registro uso de IA (Claude):
 - Cambio (23-11), a pedido del equipo:
   1. Se eliminó la rutina de las 08:00 (en un computador local casi nunca está abierto
      el programa a esa hora). En su lugar, al iniciar se cargan de internet el clima de
-     10 ciudades de Chile y el dólar, euro y UF (CargaInicial), antes del login.
+     10 ciudades de Chile y el dólar y el euro (CargaInicial), antes del login.
   2. El menú 7 quedó en "1. Clima" (elegir 1 de 10 ciudades: clima de ahora y pronóstico
-     por hora del resto del día) y "2. Monedas" (dólar, euro y UF de una vez). Si la API
+     por hora del resto del día) y "2. Monedas" (dólar y euro de una vez). Si la API
      de monedas no responde se usa el último valor guardado en Oracle.
   3. Nuevo menú 8 de reportes: 6 informes que se exportan a PDF o Excel (paquete report/).
   4. "Listar mis horas" consulta solo las horas del usuario en Oracle (antes traía todas).

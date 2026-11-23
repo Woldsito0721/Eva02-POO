@@ -20,7 +20,7 @@ REGISTRO DE USO DE IA:
   Ejecutándose en un computador local solo funcionaba si el programa estaba abierto justo a esa
   hora, así que la clase pasó a llamarse CargaInicial y se ejecuta una vez al iniciar main.py,
   antes del inicio de sesión. Carga las 10 ciudades de ServicioClima en una sola consulta y las
-  monedas principales (USD, EUR, UF). Ya no usa hilos (threading) ni time.sleep().
+  monedas principales (dólar y euro). Ya no usa hilos (threading) ni time.sleep().
 - ¿Qué se descartó?: El hilo con la espera a las 08:00 (ver abajo).
 - Justificación: El usuario siempre encuentra datos al entrar al menú de clima y monedas, sin
   depender de la hora a la que abra el programa.

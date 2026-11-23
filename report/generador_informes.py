@@ -112,7 +112,7 @@ class GeneradorInformes():
         if not usuario.tiene_permiso(Permiso.VER_SALARIOS):
             raise AccesoDenegadoError("Informe de pagos sin permiso VER_SALARIOS")
 
-        indicadores = {codigo: obtener_indicador(codigo) for codigo in ("USD", "EUR", "CLF")}
+        indicadores = {codigo: obtener_indicador(codigo) for codigo in ("USD", "EUR")}
         filas = []
         for fila in self.__repositorios["empleados"].listar():
             empleado = Empleado(fila["nombre"], fila["direccion"], fila["telefono"], fila["correo"],
@@ -126,7 +126,7 @@ class GeneradorInformes():
         valores = " | ".join(f"1 {codigo} = {Informe.formatear(ind.valor)} CLP ({ind.fecha:%d-%m-%Y})"
                              if ind else f"{codigo}: sin datos" for codigo, ind in indicadores.items())
         return Informe("Pagos en moneda extranjera",
-                       ["Empleado", "Salario (CLP)", "Dólar (USD)", "Euro (EUR)", "UF (CLF)"], filas,
+                       ["Empleado", "Salario (CLP)", "Dólar (USD)", "Euro (EUR)"], filas,
                        usuario.nombre_usuario, "pagos_moneda_extranjera", subtitulo=valores)
 
 
