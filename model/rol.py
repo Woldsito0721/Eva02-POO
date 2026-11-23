@@ -10,6 +10,7 @@ class Permiso(Enum):
     REGISTRAR_HORAS = "REGISTRAR_HORAS"
     VER_SALARIOS = "VER_SALARIOS"
     CONSULTAR_APIS = "CONSULTAR_APIS"
+    GENERAR_INFORMES = "GENERAR_INFORMES"
 
 
 # Permisos de cada rol. El nombre del rol es lo
@@ -18,6 +19,7 @@ PERMISOS_POR_ROL = {
     "ADMINISTRADOR": set(Permiso),  # todos los permisos
     "GERENTE": {
         Permiso.GESTIONAR_PROYECTOS, Permiso.REGISTRAR_HORAS, Permiso.CONSULTAR_APIS,
+        Permiso.GENERAR_INFORMES,
     },
     "EMPLEADO": {Permiso.REGISTRAR_HORAS},
 }
@@ -65,8 +67,10 @@ Registro uso de IA (Claude):
   como "VER_SALARIO" da error en vez de negar el acceso en silencio).
 - ¿Qué se modificó?: Se agregó desde_nombre() para reconstruir el rol desde Oracle,
   y los permisos se guardan en un frozenset para que no se puedan modificar.
-- ¿Qué se descartó?: Guardar los permisos como lista de textos (ver abajo) y el permiso
-  GENERAR_INFORMES, porque los informes PDF/Excel quedaron fuera de alcance.
+- ¿Qué se descartó?: Guardar los permisos como lista de textos (ver abajo).
+- Cambio (23-11): vuelve el permiso GENERAR_INFORMES (se había quitado cuando los informes
+  PDF/Excel quedaron fuera de alcance) porque se agregó el menú de reportes; lo tienen
+  ADMINISTRADOR y GERENTE.
 - Justificación: El rol vive en USUARIO.rol (texto con CHECK) y sus permisos en
   Python: si cambian los permisos de un rol no hay que modificar la base de datos.
 

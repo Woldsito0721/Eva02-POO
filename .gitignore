@@ -1,5 +1,8 @@
 .vscode
 
+# Reportes PDF/Excel generados por el sistema (contienen datos de empleados)
+reportes/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

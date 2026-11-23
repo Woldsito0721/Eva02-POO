@@ -2,3 +2,5 @@ oracledb
 python-dotenv
 requests
 cryptography
+openpyxl
+fpdf2

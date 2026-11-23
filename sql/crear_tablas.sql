@@ -101,10 +101,11 @@ CREATE TABLE registro_tiempo (
     CONSTRAINT fk_registro_proyecto FOREIGN KEY (id_proyecto) REFERENCES proyecto (id_proyecto)
 );
 
--- 8. DATO_CLIMA (rutina de las 08:00)
+-- 8. DATO_CLIMA (carga al iniciar el programa y consultas del menú de clima)
+--    id_proyecto es opcional: el clima se consulta por ciudad (10 ciudades de Chile)
 CREATE TABLE dato_clima (
     id_clima       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_proyecto    NUMBER       NOT NULL,
+    id_proyecto    NUMBER,
     ciudad         VARCHAR2(80) NOT NULL,
     temperatura    NUMBER(5,2),
     humedad        NUMBER(3),

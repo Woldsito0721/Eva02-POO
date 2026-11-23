@@ -2,8 +2,9 @@
 Sistema de gestión EcoTech Solutions - punto de entrada.
 Ejecutar desde la raíz del proyecto:  python main.py
 
-Flujo: conexión a Oracle → (primera vez) creación del administrador → inicio de
-sesión → menú según los permisos del rol → cierre de sesión.
+Flujo: conexión a Oracle → (primera vez) creación del administrador → carga de datos
+de internet (clima de 10 ciudades y monedas) → inicio de sesión → menú según los
+permisos del rol → cierre de sesión.
 
 Reglas PEP8 (vistas en clases):
 - clases -> inicial en mayúscula (SistemaEcoTech)
@@ -23,6 +24,7 @@ from database.repositorios import (
 from model.asignacion import Asignacion
 from model.departamento import Departamento
 from model.empleado import Empleado
+from model.indicador_economico import IndicadorEconomico
 from model.proyecto import Proyecto
 from model.registro_tiempo import RegistroTiempo
 from model.rol import PERMISOS_POR_ROL, Permiso, Rol
@@ -30,22 +32,25 @@ from model.usuario import Usuario
 from security.servicio_cifrado import ServicioCifrado
 from security.sesion import AccesoDenegadoError, Sesion
 from security.validador import Validador
+from report.exportador_excel import ExportadorExcel
+from report.exportador_pdf import ExportadorPDF
+from report.generador_informes import GeneradorInformes
+from service.carga_inicial import CargaInicial
 from service.servicio_api import ErrorServicioExterno
 from service.servicio_clima import ServicioClima
 from service.servicio_indicadores import ServicioIndicadores
-from service.tarea_programada import TareaProgramada
 
 
 class SistemaEcoTech():
-    """ Ciclo principal: conexión, sesión, menús por permisos y rutina de las 08:00 """
+    """ Ciclo principal: conexión, carga de datos de internet, sesión y menús por permisos """
 
     MAXIMO_INTENTOS_LOGIN = 3
 
     def __init__(self):
         self.__conexion = None
         self.__sesion = None
-        self.__tarea = None
         self.__cifrado = None
+        self.__informes = None
         self.__repositorios = {}
         self.__clima = ServicioClima()
         self.__indicadores = ServicioIndicadores()
@@ -156,6 +161,7 @@ class SistemaEcoTech():
             "usuarios": RepositorioUsuario(self.__conexion),
             "externos": RepositorioDatoExterno(self.__conexion),
         }
+        self.__informes = GeneradorInformes(self.__repositorios, self.__cifrado)
         return True
 
     def __crear_administrador_inicial(self) -> bool:
@@ -288,21 +294,18 @@ class SistemaEcoTech():
                 if opcion == "1":
                     self.__listar_proyectos()
                 elif opcion == "2":
-                    if repositorio.insertar(self.__pedir_datos_proyecto()):
-                        self.__recargar_tarea()
+                    repositorio.insertar(self.__pedir_datos_proyecto())
                 elif opcion == "3":
                     actual = repositorio.buscar_por_id(self.__pedir_entero(" - Id del proyecto: "))
                     if not actual:
                         print("[WARNING] Proyecto no encontrado")
                     elif repositorio.actualizar(self.__pedir_datos_proyecto(actual)):
                         print("[INFO] Proyecto actualizado")
-                        self.__recargar_tarea()
                 elif opcion == "4":
                     id_proyecto = self.__pedir_entero(" - Id del proyecto a eliminar: ")
                     # Con asignaciones u horas, Oracle responde ORA-02292 y no se borra
                     if self.__confirmar(f"¿Eliminar el proyecto {id_proyecto}?") and repositorio.eliminar(id_proyecto):
                         print("[INFO] Proyecto eliminado")
-                        self.__recargar_tarea()
                 elif opcion == "0":
                     return
                 else:
@@ -439,7 +442,10 @@ class SistemaEcoTech():
                         self.__exigir(Permiso.CONSULTAR_APIS)
                         codigo = self.__pedir_con_validador(" - Moneda (USD, EUR, CLF): ",
                                                             Validador.validar_codigo_moneda, "Código de 3 letras")
-                        indicador = self.__indicadores.obtener_indicador(codigo)
+                        indicador = self.__obtener_indicador(codigo.upper())
+                        if not indicador:
+                            print("[WARNING] No hay valor disponible para esa moneda (sin internet y sin datos guardados)")
+                            continue
                         pago = empleado.calcular_pago_en_moneda(self.__usuario_actual(), indicador, self.__cifrado)
                         print(f"  Pago de {empleado.nombre}: {pago:,.2f} {indicador.codigo} "
                               f"(1 {indicador.codigo} = {indicador.valor} CLP al {indicador.fecha:%d-%m-%Y})")
@@ -536,7 +542,7 @@ class SistemaEcoTech():
                         self.__pedir_texto(" - Descripción (opcional): ", 300, False))
                     registros.insertar(registro)
                 elif opcion == "2":
-                    propios = [r for r in registros.listar() if r["id_empleado"] == id_empleado]
+                    propios = registros.listar_por_empleado(id_empleado)
                     if not propios:
                         print("  (sin horas registradas)")
                     for r in propios:
@@ -587,50 +593,89 @@ class SistemaEcoTech():
                 print("[WARNING] Opción no válida")
 
     # ==================================================================
-    # 7. Servicios externos (APIs) y rutina de las 08:00
+    # 7. Clima y monedas (APIs)
     # ==================================================================
-    def __recargar_tarea(self):
-        """ La rutina siempre trabaja con la lista actual de proyectos """
-        if self.__tarea:
-            self.__tarea.configurar_proyectos(self.__repositorios["proyectos"].listar())
+    def __cargar_datos_internet(self):
+        """ Al iniciar el programa: clima de las 10 ciudades y monedas principales a Oracle """
+        print("[INFO] Cargando datos de internet (clima de 10 ciudades y monedas)...")
+        carga = CargaInicial(self.__clima, self.__indicadores, self.__repositorios["externos"])
+        resumen = carga.ejecutar()
+        print(f"[INFO] Datos cargados: {resumen['clima']} ciudades y {resumen['indicadores']} monedas"
+              + (f" ({resumen['errores']} con error; se usarán los últimos datos guardados)" if resumen["errores"] else ""))
+
+    def __obtener_indicador(self, codigo: str):
+        """
+        Valor de una moneda: 1) el guardado HOY (carga inicial), 2) internet,
+        3) el último guardado en Oracle si la API no responde. None si no hay nada.
+        """
+        externos = self.__repositorios["externos"]
+        guardado = externos.ultimo_indicador(codigo)
+        if guardado and guardado["fecha"].date() >= date.today():
+            return IndicadorEconomico(guardado["codigo"], float(guardado["valor"]), guardado["fecha"])
+        try:
+            indicador = self.__indicadores.obtener_indicador(codigo)
+            externos.guardar_indicador(indicador)
+            return indicador
+        except ErrorServicioExterno as e:
+            print(f"[WARNING] {ServicioIndicadores.NOMBRES.get(codigo, codigo)}: {e.mensaje_seguro()}")
+        if guardado:
+            print(f"[INFO] Se usa el último valor guardado ({guardado['fecha']:%d-%m-%Y})")
+            return IndicadorEconomico(guardado["codigo"], float(guardado["valor"]), guardado["fecha"])
+        return None
+
+    def __consultar_clima(self):
+        ciudades = list(ServicioClima.CIUDADES)
+        print("\n--- Ciudades ---")
+        for numero, ciudad in enumerate(ciudades, start=1):
+            print(f"{numero:>2}. {ciudad}")
+        print(" 0. Volver")
+        numero = self.__pedir_entero("Ciudad: ")
+        if numero == 0:
+            return
+        if not 1 <= numero <= len(ciudades):
+            print("[WARNING] Opción no válida")
+            return
+
+        # Clima de AHORA y las horas que quedan del día (hora local de la ciudad)
+        actual, siguientes = self.__clima.obtener_pronostico(ciudades[numero - 1])
+        print(f"\n  {actual.ciudad} | {actual.fecha_consulta:%d-%m-%Y} a las {actual.fecha_consulta:%H:%M}")
+        print(f"  Ahora: {actual.temperatura} °C | humedad {actual.humedad}% | {actual.estado}")
+        print("  → Se puede trabajar en terreno" if actual.es_apto_para_trabajo()
+              else "  → NO se recomienda trabajar en terreno ahora")
+        self.__repositorios["externos"].guardar_clima(actual)
+
+        if not siguientes:
+            print("  (no quedan más horas de pronóstico para hoy)")
+            return
+        print("\n  Hora  | Temp.    | Humedad | Lluvia | Estado")
+        print("  ------+----------+---------+--------+---------------------------")
+        for hora in siguientes:
+            lluvia = f"{hora.probabilidad_lluvia}%" if hora.probabilidad_lluvia is not None else "-"
+            print(f"  {hora.fecha_consulta:%H:%M} | {hora.temperatura:>5.1f} °C | {hora.humedad:>6}% | {lluvia:>6} | {hora.estado}")
+
+    def __consultar_monedas(self):
+        print("\n  Moneda | Valor en pesos chilenos | Fecha")
+        print("  -------+-------------------------+-----------")
+        for codigo in ServicioIndicadores.PRINCIPALES:
+            indicador = self.__obtener_indicador(codigo)
+            nombre = ServicioIndicadores.NOMBRES[codigo]
+            if indicador:
+                valor = f"{indicador.valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                print(f"  {nombre:<6} | ${valor:>22} | {indicador.fecha:%d-%m-%Y}")
+            else:
+                print(f"  {nombre:<6} | {'sin datos':>23} |")
 
     def __menu_servicios(self):
         self.__exigir(Permiso.CONSULTAR_APIS)
-        externos = self.__repositorios["externos"]
         while True:
             self.__exigir(Permiso.CONSULTAR_APIS)  # en cada vuelta: la sesión pudo expirar dentro del submenú
-            print("\n--- Servicios externos ---\n1. Clima de un proyecto\n2. Valor de una moneda"
-                  "\n3. Ejecutar ahora la rutina de las 08:00\n4. Ver climas guardados\n5. Ver indicadores guardados\n0. Volver")
+            print("\n--- Clima y monedas ---\n1. Clima\n2. Monedas\n0. Volver")
             opcion = input("Opción: ").strip()
             try:
                 if opcion == "1":
-                    proyecto = self.__repositorios["proyectos"].buscar_por_id(self.__pedir_entero(" - Id del proyecto: "))
-                    if not proyecto:
-                        print("[WARNING] Proyecto no encontrado")
-                        continue
-                    dato = self.__clima.obtener_clima(proyecto["ciudad"])
-                    print(f"  {dato}")
-                    print("  → Se puede trabajar en terreno" if dato.es_apto_para_trabajo()
-                          else "  → NO se recomienda trabajar en terreno hoy")
-                    externos.guardar_clima(dato, proyecto["id_proyecto"])
+                    self.__consultar_clima()
                 elif opcion == "2":
-                    codigo = self.__pedir_con_validador(" - Moneda (USD, EUR, CLF): ",
-                                                        Validador.validar_codigo_moneda, "Código de 3 letras")
-                    indicador = self.__indicadores.obtener_indicador(codigo)
-                    print(f"  {indicador}")
-                    externos.guardar_indicador(indicador)
-                elif opcion == "3":
-                    self.__recargar_tarea()
-                    resumen = self.__tarea.ejecutar()
-                    print(f"[INFO] Rutina ejecutada: {resumen['clima']} climas y {resumen['indicadores']} "
-                          f"indicadores nuevos, {resumen['errores']} errores")
-                elif opcion == "4":
-                    for c in externos.listar()[:20]:
-                        print(f"  {c['fecha_consulta']:%d-%m-%Y %H:%M} | proyecto {c['id_proyecto']} | {c['ciudad']} | "
-                              f"{c['temperatura']} °C | {c['humedad']}% | {c['estado']}")
-                elif opcion == "5":
-                    for i in externos.listar_indicadores()[:20]:
-                        print(f"  {i['fecha']:%d-%m-%Y} | {i['codigo']} = {i['valor']} CLP")
+                    self.__consultar_monedas()
                 elif opcion == "0":
                     return
                 else:
@@ -639,6 +684,68 @@ class SistemaEcoTech():
                 print(f"[WARNING] {e}")
             except ErrorServicioExterno as e:
                 print(f"[WARNING] {e.mensaje_seguro()}")  # nunca la URL ni el detalle técnico
+
+    # ==================================================================
+    # 8. Reportes (PDF o Excel)
+    # ==================================================================
+    def __menu_reportes(self):
+        self.__exigir(Permiso.GENERAR_INFORMES)
+        informes = self.__informes
+        while True:
+            self.__exigir(Permiso.GENERAR_INFORMES)  # en cada vuelta: la sesión pudo expirar
+            usuario = self.__usuario_actual()
+            print("\n--- Reportes ---")
+            for numero, titulo in GeneradorInformes.INFORMES:
+                # El de pagos descifra salarios: solo se muestra con VER_SALARIOS
+                if numero != "6" or usuario.tiene_permiso(Permiso.VER_SALARIOS):
+                    print(f"{numero}. {titulo}")
+            print("0. Volver")
+            opcion = input("Opción: ").strip()
+            try:
+                if opcion == "0":
+                    return
+                elif opcion == "1":
+                    informe = informes.horas_por_proyecto(usuario)
+                elif opcion == "2":
+                    informe = informes.horas_de_empleado(
+                        usuario, self.__pedir_entero(" - Id del empleado: "),
+                        self.__pedir_fecha(" - Desde (dd-mm-aaaa): "),
+                        self.__pedir_fecha(" - Hasta (dd-mm-aaaa, Enter = hoy): ", True))
+                elif opcion == "3":
+                    informe = informes.empleados_por_departamento(usuario)
+                elif opcion == "4":
+                    informe = informes.asignaciones_de_proyecto(usuario, self.__pedir_entero(" - Id del proyecto: "))
+                elif opcion == "5":
+                    informe = informes.clima_e_indicadores(usuario)
+                elif opcion == "6":
+                    self.__exigir(Permiso.VER_SALARIOS)
+                    informe = informes.pagos_en_moneda(usuario, self.__obtener_indicador)
+                else:
+                    print("[WARNING] Opción no válida")
+                    continue
+
+                if informe.esta_vacio():
+                    print("[WARNING] No hay datos para este reporte")
+                    continue
+                print(f"[INFO] {informe.titulo}: {len(informe.filas)} filas")
+                exportador = self.__elegir_formato()
+                if exportador:
+                    ruta = exportador.exportar(informe)
+                    print(f"[INFO] Reporte {exportador.nombre_formato} guardado en: {ruta}")
+            except ValueError as e:
+                print(f"[WARNING] {e}")
+
+    def __elegir_formato(self):
+        """ Polimorfismo: el menú trabaja con 'Exportador' sin saber si es PDF o Excel """
+        while True:
+            opcion = input("Formato del reporte:\n1. PDF\n2. Excel\n0. Cancelar\nOpción: ").strip()
+            if opcion == "1":
+                return ExportadorPDF()
+            if opcion == "2":
+                return ExportadorExcel()
+            if opcion == "0":
+                return None
+            print("[WARNING] Opción no válida")
 
     # ==================================================================
     # Ciclo principal
@@ -654,7 +761,8 @@ class SistemaEcoTech():
             ("4", "Asignaciones", Permiso.GESTIONAR_PROYECTOS),
             ("5", "Registro de horas", Permiso.REGISTRAR_HORAS),
             ("6", "Usuarios", None),  # None = reservado al rol ADMINISTRADOR
-            ("7", "Clima e indicadores (APIs)", Permiso.CONSULTAR_APIS),
+            ("7", "Clima y monedas", Permiso.CONSULTAR_APIS),
+            ("8", "Reportes (PDF / Excel)", Permiso.GENERAR_INFORMES),
         ]
         for numero, texto, permiso in opciones:
             visible = self.__es_administrador() if permiso is None else usuario.tiene_permiso(permiso)
@@ -671,14 +779,12 @@ class SistemaEcoTech():
                 print("[ERROR] No se pudo crear el administrador inicial")
                 return
 
-            # Rutina automática de las 08:00 en un hilo aparte, con los proyectos actuales
-            self.__tarea = TareaProgramada(self.__clima, self.__indicadores, self.__repositorios["externos"])
-            self.__recargar_tarea()
-            self.__tarea.programar()
+            # Trae de internet el clima de las 10 ciudades y las monedas antes del login
+            self.__cargar_datos_internet()
 
             menus = {"1": self.__menu_proyectos, "2": self.__menu_departamentos, "3": self.__menu_empleados,
                      "4": self.__menu_asignaciones, "5": self.__menu_horas, "6": self.__menu_usuarios,
-                     "7": self.__menu_servicios}
+                     "7": self.__menu_servicios, "8": self.__menu_reportes}
 
             while self.__pantalla_login():
                 while self.__sesion:
@@ -705,8 +811,6 @@ class SistemaEcoTech():
         except KeyboardInterrupt:
             print("\n[INFO] Programa interrumpido por el usuario")  # Ctrl+C no muestra traceback
         finally:
-            if self.__tarea:
-                self.__tarea.detener()
             self.__conexion.cerrar()  # La conexión se cierra siempre, aunque haya error
 
 
@@ -718,8 +822,8 @@ if __name__ == "__main__":
 Registro uso de IA (Claude):
 - ¿Qué generó la herramienta?: La clase SistemaEcoTech con conexión única, creación
   del administrador inicial, inicio de sesión, menú filtrado por permisos, CRUD de
-  proyectos, departamentos, empleados, asignaciones, horas y usuarios, consultas a
-  las APIs y la rutina de las 08:00 en segundo plano.
+  proyectos, departamentos, empleados, asignaciones, horas y usuarios, y consultas a
+  las APIs.
 - ¿Qué se adoptó?: Menús con if/elif como en la actividad de clases, mensajes
   [INFO]/[WARNING]/[ERROR], confirmación antes de eliminar y cierre de la conexión y
   de la rutina en finally.
@@ -738,6 +842,15 @@ Registro uso de IA (Claude):
      (RegistroTiempo.__validar, agregación 0..1) se aplican siempre.
   2. Cada submenú vuelve a exigir el permiso en cada vuelta del bucle: antes la
      expiración de 30 minutos solo se revisaba al entrar al submenú.
+- Cambio (23-11), a pedido del equipo:
+  1. Se eliminó la rutina de las 08:00 (en un computador local casi nunca está abierto
+     el programa a esa hora). En su lugar, al iniciar se cargan de internet el clima de
+     10 ciudades de Chile y el dólar, euro y UF (CargaInicial), antes del login.
+  2. El menú 7 quedó en "1. Clima" (elegir 1 de 10 ciudades: clima de ahora y pronóstico
+     por hora del resto del día) y "2. Monedas" (dólar, euro y UF de una vez). Si la API
+     de monedas no responde se usa el último valor guardado en Oracle.
+  3. Nuevo menú 8 de reportes: 6 informes que se exportan a PDF o Excel (paquete report/).
+  4. "Listar mis horas" consulta solo las horas del usuario en Oracle (antes traía todas).
 
 Código propuesto por la IA y DESCARTADO:
 
